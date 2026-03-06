@@ -4,6 +4,11 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { BrainCircuit, FolderTree, GitGraph, LayoutDashboard, SearchCode, Settings, Sparkles, FolderCode, Loader2 } from "lucide-react";
 import { ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState, type Node, type Edge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { FileTree } from "./file-tree";
+import { CodeViewer } from "./code-viewer";
+import { CommandPalette, useCommandPalette } from "./command-palette";
+import { ImpactAnalysis } from "./impact-analysis";
+import { ArchitectureOverview } from "./architecture-overview";
 
 type NavItem = "Dashboard" | "Architecture" | "Graph Explorer" | "AI Chat" | "Impact Analyzer" | "File Explorer" | "Settings";
 
@@ -161,6 +166,45 @@ export function Workspace() {
   const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'ai', content: string }[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
 
+  // File Explorer State
+  const [selectedFile, setSelectedFile] = useState<any>(null);
+  
+  // Command Palette
+  const commandPalette = useCommandPalette();
+
+  const handleAIQuery = (query: string) => {
+    setChatMessage(query);
+    // Auto-submit the query
+    if (analysisData) {
+      setChatHistory(prev => [...prev, { role: 'user', content: query }]);
+      setIsChatLoading(true);
+      
+      fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: query,
+          context: analysisData
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setChatHistory(prev => [...prev, { role: 'ai', content: data.reply }]);
+        } else {
+          setChatHistory(prev => [...prev, { role: 'ai', content: "Error: " + data.error }]);
+        }
+      })
+      .catch(error => {
+        setChatHistory(prev => [...prev, { role: 'ai', content: "Error: " + error.message }]);
+      })
+      .finally(() => {
+        setIsChatLoading(false);
+        setChatMessage("");
+      });
+    }
+  };
+
   // Store raw graph data for filtering
   const [rawGraphData, setRawGraphData] = useState<{ nodes: FlowNode[]; edges: FlowEdge[] } | null>(null);
 
@@ -299,7 +343,7 @@ export function Workspace() {
             <span className="font-medium text-slate-300">Command Palette</span>
             <kbd className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-slate-400">⌘K</kbd>
           </div>
-          <p className="leading-relaxed">Search functions, open graphs, or ask AI.</p>
+          <p className="leading-relaxed">Search files, functions, navigate, or ask AI about your code.</p>
         </div>
       </aside>
 
@@ -400,263 +444,37 @@ export function Workspace() {
 
             {activeTab === "File Explorer" && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 h-[600px] flex">
-                <div className="w-80 border-r border-white/5 pr-4 mr-6 overflow-y-auto">
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-4">Files</h3>
-                  <div className="space-y-1 text-sm text-slate-400">
-                    {!analysisData ? (
-                      <p className="text-xs italic text-slate-600">Import a repository first.</p>
-                    ) : (
-                      analysisData.files.map((file: any) => (
-                        <div key={file.path} className="cursor-pointer hover:text-white px-3 py-2 rounded hover:bg-white/5 border border-white/5">
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono text-xs text-slate-300 truncate">{file.path}</span>
-                            <div className="flex gap-2 text-xs">
-                              <span className={`px-1.5 py-0.5 rounded ${
-                                file.complexity > 20 ? 'bg-red-500/20 text-red-400' : 
-                                file.complexity > 10 ? 'bg-amber-500/20 text-amber-400' : 
-                                'bg-green-500/20 text-green-400'
-                              }`}>
-                                C{file.complexity || 0}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
-                            <span>{file.functions?.length || 0} functions</span>
-                            <span>{file.classes?.length || 0} classes</span>
-                            <span>{file.imports?.length || 0} imports</span>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-                <div className="flex-1 rounded-xl border border-white/5 bg-[#050505] p-6 font-mono text-sm overflow-y-auto">
+                <div className="w-80 border-r border-white/5">
                   {!analysisData ? (
-                    <div className="text-slate-600 flex items-center justify-center h-full">Select a file to view details</div>
-                  ) : (
-                    <div className="space-y-6">
-                      <div className="text-slate-500 border-b border-white/5 pb-2">Enhanced Analysis Overview</div>
-                      {analysisData.files[0] && (
-                        <div className="space-y-6">
-                          <div>
-                            <h4 className="text-cyan-400 mb-3 flex items-center gap-2">
-                              Functions <span className="text-xs bg-cyan-500/20 px-2 py-1 rounded">{analysisData.files[0].functions?.length || 0}</span>
-                            </h4>
-                            <div className="space-y-2">
-                              {(analysisData.files[0].functions || []).slice(0, 8).map((f: any, i: number) => (
-                                <div key={i} className="flex items-center justify-between bg-white/[0.02] px-3 py-2 rounded border border-white/5">
-                                  <div>
-                                    <span className="text-slate-200">{f.name || f}</span>
-                                    {f.parameters && (
-                                      <span className="text-xs text-slate-500 ml-2">({f.parameters.join(', ')})</span>
-                                    )}
-                                  </div>
-                                  <div className="flex gap-2 text-xs">
-                                    {f.complexity && (
-                                      <span className={`px-1.5 py-0.5 rounded ${
-                                        f.complexity > 10 ? 'bg-red-500/20 text-red-400' : 
-                                        f.complexity > 5 ? 'bg-amber-500/20 text-amber-400' : 
-                                        'bg-green-500/20 text-green-400'
-                                      }`}>
-                                        C{f.complexity}
-                                      </span>
-                                    )}
-                                    {f.startLine && (
-                                      <span className="text-slate-500">L{f.startLine}-{f.endLine}</span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          
-                          <div>
-                            <h4 className="text-emerald-400 mb-3 flex items-center gap-2">
-                              Imports <span className="text-xs bg-emerald-500/20 px-2 py-1 rounded">{analysisData.files[0].imports?.length || 0}</span>
-                            </h4>
-                            <div className="space-y-2">
-                              {(analysisData.files[0].imports || []).slice(0, 6).map((imp: any, i: number) => (
-                                <div key={i} className="flex items-center justify-between bg-white/[0.02] px-3 py-2 rounded border border-white/5">
-                                  <span className="text-slate-300 font-mono text-xs">{imp.original || imp}</span>
-                                  <div className="flex gap-2">
-                                    {imp.isResolved && (
-                                      <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">✓</span>
-                                    )}
-                                    {imp.isExternal && (
-                                      <span className="text-xs bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">EXT</span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          {analysisData.files[0].exports?.length > 0 && (
-                            <div>
-                              <h4 className="text-purple-400 mb-3">Exports</h4>
-                              <div className="flex flex-wrap gap-2">
-                                {analysisData.files[0].exports.map((exp: string, i: number) => (
-                                  <span key={i} className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-xs">{exp}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                    <div className="p-4 text-slate-600 text-center text-sm">
+                      Import a repository first to explore files.
                     </div>
+                  ) : (
+                    <FileTree 
+                      files={analysisData.files}
+                      selectedFile={selectedFile?.path || null}
+                      onFileSelect={(file) => setSelectedFile(file)}
+                    />
                   )}
+                </div>
+                <div className="flex-1 pl-6">
+                  <CodeViewer file={selectedFile} repoPath={repoPathInput} />
                 </div>
               </div>
             )}
 
             {activeTab === "Architecture" && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-                <h1 className="text-2xl font-light tracking-tight text-white mb-2">Architecture Overview</h1>
-                <p className="text-sm text-slate-500 mb-8">Automatically detected architecture patterns and structure.</p>
-
+              <div>
                 {!analysisData ? (
-                  <div className="flex items-center justify-center p-12 rounded-xl border border-white/5 bg-[#050505] text-slate-600">
-                    Import a repository to analyze its architecture.
+                  <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                    <h1 className="text-2xl font-light tracking-tight text-white mb-2">Architecture Overview</h1>
+                    <p className="text-sm text-slate-500 mb-8">Structural layers, coupling heatmap, and complexity distribution.</p>
+                    <div className="flex items-center justify-center p-12 rounded-xl border border-white/5 bg-[#050505] text-slate-600">
+                      Import a repository to analyze its architecture.
+                    </div>
                   </div>
                 ) : (
-                  <div className="space-y-8">
-                    {/* Architecture Pattern */}
-                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-medium text-white">Detected Pattern</h2>
-                        <div className="flex items-center gap-2">
-                          <div className={`h-2 w-2 rounded-full ${
-                            analysisData.architecture?.pattern.confidence > 0.8 ? 'bg-green-500' :
-                            analysisData.architecture?.pattern.confidence > 0.6 ? 'bg-yellow-500' : 'bg-gray-500'
-                          }`}></div>
-                          <span className="text-xs text-slate-500">
-                            {Math.round((analysisData.architecture?.pattern.confidence || 0) * 100)}% confidence
-                          </span>
-                        </div>
-                      </div>
-                      
-                      <div className="mb-4">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="text-xl font-light text-cyan-400">
-                            {analysisData.architecture?.pattern.type || 'Unknown'}
-                          </span>
-                        </div>
-                        <p className="text-sm text-slate-300 mb-4">
-                          {analysisData.architecture?.pattern.description || 'No description available'}
-                        </p>
-                        
-                        {analysisData.architecture?.pattern.characteristics && (
-                          <div className="flex flex-wrap gap-2">
-                            {analysisData.architecture.pattern.characteristics.map((char: string, i: number) => (
-                              <span key={i} className="px-2 py-1 bg-cyan-500/10 text-cyan-300 text-xs rounded border border-cyan-500/20">
-                                {char}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Layers */}
-                    {analysisData.architecture?.layers && analysisData.architecture.layers.length > 0 && (
-                      <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
-                        <h2 className="text-lg font-medium text-white mb-4">Architecture Layers</h2>
-                        <div className="space-y-4">
-                          {analysisData.architecture.layers.map((layer: any, i: number) => (
-                            <div key={i} className="border border-white/5 rounded-lg p-4 bg-white/[0.01]">
-                              <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-sm font-medium text-slate-200">{layer.name}</h3>
-                                <span className="text-xs text-slate-500">{layer.files.length} files</span>
-                              </div>
-                              <p className="text-xs text-slate-400 mb-3">{layer.description}</p>
-                              <div className="flex flex-wrap gap-1">
-                                {layer.files.slice(0, 6).map((file: string, j: number) => (
-                                  <span key={j} className="px-2 py-1 bg-white/5 text-slate-400 text-xs rounded font-mono">
-                                    {file.split('/').pop()}
-                                  </span>
-                                ))}
-                                {layer.files.length > 6 && (
-                                  <span className="px-2 py-1 text-slate-500 text-xs">
-                                    +{layer.files.length - 6} more
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Components */}
-                    {analysisData.architecture?.components && analysisData.architecture.components.length > 0 && (
-                      <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
-                        <h2 className="text-lg font-medium text-white mb-4">Key Components</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {analysisData.architecture.components.slice(0, 6).map((comp: any, i: number) => (
-                            <div key={i} className="border border-white/5 rounded-lg p-4 bg-white/[0.01]">
-                              <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-sm font-medium text-slate-200">{comp.name}</h3>
-                                <div className="flex items-center gap-2">
-                                  <span className={`px-2 py-1 text-xs rounded ${
-                                    comp.complexity === 'high' ? 'bg-red-500/20 text-red-400' :
-                                    comp.complexity === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                                    'bg-green-500/20 text-green-400'
-                                  }`}>
-                                    {comp.complexity}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="text-xs text-slate-500 mb-2 capitalize">{comp.type.replace('-', ' ')}</div>
-                              <div className="flex flex-wrap gap-1">
-                                {comp.responsibilities?.slice(0, 3).map((resp: string, j: number) => (
-                                  <span key={j} className="text-xs text-slate-400 bg-white/5 px-2 py-1 rounded">
-                                    {resp}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Insights */}
-                    {analysisData.architecture?.insights && analysisData.architecture.insights.length > 0 && (
-                      <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
-                        <h2 className="text-lg font-medium text-white mb-4">Architecture Insights</h2>
-                        <div className="space-y-3">
-                          {analysisData.architecture.insights.map((insight: any, i: number) => (
-                            <div key={i} className={`border rounded-lg p-4 ${
-                              insight.type === 'strength' ? 'border-green-500/20 bg-green-500/5' :
-                              insight.type === 'risk' ? 'border-red-500/20 bg-red-500/5' :
-                              insight.type === 'suggestion' ? 'border-blue-500/20 bg-blue-500/5' :
-                              'border-yellow-500/20 bg-yellow-500/5'
-                            }`}>
-                              <div className="flex items-start gap-3">
-                                <div className={`w-2 h-2 rounded-full mt-2 ${
-                                  insight.type === 'strength' ? 'bg-green-400' :
-                                  insight.type === 'risk' ? 'bg-red-400' :
-                                  insight.type === 'suggestion' ? 'bg-blue-400' :
-                                  'bg-yellow-400'
-                                }`}></div>
-                                <div className="flex-1">
-                                  <h3 className={`font-medium text-sm mb-1 ${
-                                    insight.type === 'strength' ? 'text-green-300' :
-                                    insight.type === 'risk' ? 'text-red-300' :
-                                    insight.type === 'suggestion' ? 'text-blue-300' :
-                                    'text-yellow-300'
-                                  }`}>
-                                    {insight.title}
-                                  </h3>
-                                  <p className="text-xs text-slate-400">{insight.description}</p>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <ArchitectureOverview analysisData={analysisData} />
                 )}
               </div>
             )}
@@ -807,29 +625,7 @@ export function Workspace() {
             )}
 
             {activeTab === "Impact Analyzer" && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-                <h1 className="text-2xl font-light tracking-tight text-white mb-2">Impact Analyzer</h1>
-                <p className="text-sm text-slate-500 mb-8">See what breaks downstream when you change a function.</p>
-
-                <div className="rounded-xl border border-white/5 bg-[#050505] p-6">
-                  <div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/5">
-                    <SearchCode className="text-amber-400" size={20} />
-                    <span className="text-sm font-medium text-slate-200">Analyzing changes to <code className="bg-white/10 px-1.5 py-0.5 rounded text-amber-300 mx-1">processPayment()</code></span>
-                  </div>
-
-                  <div className="space-y-4 text-sm">
-                    <p className="text-slate-400">The following modules will be affected:</p>
-                    <div className="grid grid-cols-2 gap-4">
-                      {["checkoutService", "refundService", "billingAPI", "subscriptionWorker"].map(module => (
-                        <div key={module} className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.02] border border-white/5">
-                          <div className="h-1.5 w-1.5 rounded-full bg-amber-500"></div>
-                          <span className="font-mono text-slate-300">{module}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <ImpactAnalysis analysisData={analysisData} />
             )}
 
             {activeTab === "Settings" && (
@@ -844,6 +640,19 @@ export function Workspace() {
           </div>
         </div>
       </section>
+      
+      {/* Command Palette */}
+      <CommandPalette
+        isOpen={commandPalette.isOpen}
+        onClose={commandPalette.close}
+        analysisData={analysisData}
+        onFileSelect={(file) => {
+          setSelectedFile(file);
+          setActiveTab('File Explorer');
+        }}
+        onAIQuery={handleAIQuery}
+        onNavigateToTab={(tab) => setActiveTab(tab as NavItem)}
+      />
     </main>
   );
 }
