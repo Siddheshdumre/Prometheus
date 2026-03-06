@@ -1,13 +1,36 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 
+interface ContextCodeChunk {
+    content: string;
+    filePath: string;
+    functionName?: string;
+}
+
+interface AnalysisContext {
+    codeChunks?: ContextCodeChunk[];
+    metrics?: {
+        files?: number;
+        functions?: number;
+        classes?: number;
+        dependencies?: number;
+        resolvedImports?: number;
+        functionCalls?: number;
+    };
+}
+
+interface ChatRequestBody {
+    message?: string;
+    context?: AnalysisContext;
+}
+
 // Initialize the Google Gen AI client. 
 // It will automatically use the GEMINI_API_KEY environment variable.
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 export async function POST(req: Request) {
     try {
-        const { message, context } = await req.json();
+        const { message, context } = (await req.json()) as ChatRequestBody;
 
         if (!message) {
             return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -22,11 +45,11 @@ export async function POST(req: Request) {
         
         if (context.codeChunks) {
             // Simple keyword matching for now (should be replaced with vector search later)
-            const keywords = message.toLowerCase().split(' ').filter(word => word.length > 2);
+            const keywords = message.toLowerCase().split(' ').filter((word: string) => word.length > 2);
             
-            const relevantChunks = context.codeChunks.filter((chunk: any) => {
+            const relevantChunks = context.codeChunks.filter((chunk: ContextCodeChunk) => {
                 const content = chunk.content.toLowerCase();
-                return keywords.some(keyword => 
+                return keywords.some((keyword: string) => 
                     content.includes(keyword) || 
                     chunk.functionName?.toLowerCase().includes(keyword) ||
                     chunk.filePath.toLowerCase().includes(keyword)
@@ -35,7 +58,7 @@ export async function POST(req: Request) {
             
             if (relevantChunks.length > 0) {
                 relevantContext = "\n\nRELEVANT CODE CONTEXT:\n" + 
-                    relevantChunks.map((chunk: any) => 
+                    relevantChunks.map((chunk: ContextCodeChunk) => 
                         `[${chunk.filePath}${chunk.functionName ? ':' + chunk.functionName : ''}]\n${chunk.content}`
                     ).join('\n\n---\n\n');
             }

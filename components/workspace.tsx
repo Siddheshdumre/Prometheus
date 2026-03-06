@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { BrainCircuit, FolderTree, GitGraph, LayoutDashboard, SearchCode, Settings, Sparkles, FolderCode, Loader2 } from "lucide-react";
-import { ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState } from '@xyflow/react';
+import { ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState, type Node, type Edge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 type NavItem = "Dashboard" | "Architecture" | "Graph Explorer" | "AI Chat" | "Impact Analyzer" | "File Explorer" | "Settings";
@@ -17,21 +17,48 @@ const navItems: { label: NavItem; icon: React.ElementType }[] = [
   { label: "Settings", icon: Settings }
 ];
 
-const generateGraphLayout = (nodes: any[], edges: any[]) => {
+type FlowNodeData = {
+  label: string;
+  complexity?: number;
+  size?: number;
+};
+
+type FlowNode = Node<FlowNodeData>;
+type FlowEdge = Edge;
+
+type AnalyzerGraphNode = {
+  id: string;
+  label: string;
+  type: 'file' | 'function' | 'external';
+  group?: string;
+  complexity?: number;
+  size?: number;
+};
+
+type AnalyzerGraphEdge = {
+  id: string;
+  source: string;
+  target: string;
+  type: 'imports' | 'calls';
+  weight: number;
+};
+
+const generateGraphLayout = (nodes: AnalyzerGraphNode[], edges: AnalyzerGraphEdge[]): FlowNode[] => {
   // Group nodes by directory for better clustering  
-  const nodesByGroup = nodes.reduce((acc, node) => {
+  const nodesByGroup = nodes.reduce<Record<string, AnalyzerGraphNode[]>>((acc, node) => {
     const group = node.group || 'root';
     if (!acc[group]) acc[group] = [];
     acc[group].push(node);
     return acc;
-  }, {} as { [key: string]: any[] });
+  }, {});
   
   let globalY = 0;
-  const positioned = [];
+  const positioned: FlowNode[] = [];
 
   Object.entries(nodesByGroup).forEach(([group, groupNodes]) => {
-    groupNodes.forEach((node, idx) => {
+    groupNodes.forEach((node: AnalyzerGraphNode, idx: number) => {
       const isExternal = node.type === 'external';
+      const complexity = node.complexity ?? 0;
       positioned.push({
         ...node,
         data: { 
@@ -44,7 +71,7 @@ const generateGraphLayout = (nodes: any[], edges: any[]) => {
           y: globalY + Math.floor(idx / 4) * 100 + Math.random() * 15
         },
         style: {
-          background: isExternal ? '#374151' : node.complexity > 10 ? '#dc2626' : node.complexity > 5 ? '#f59e0b' : '#1e293b',
+          background: isExternal ? '#374151' : complexity > 10 ? '#dc2626' : complexity > 5 ? '#f59e0b' : '#1e293b',
           color: '#e2e8f0',
           border: isExternal ? '1px solid #6b7280' : '1px solid #334155',
           borderRadius: '6px',
@@ -62,17 +89,17 @@ const generateGraphLayout = (nodes: any[], edges: any[]) => {
 };
 
 // Helper function to filter and simplify the graph
-const filterGraph = (nodes: any[], edges: any[], filter: string, maxConnections: number, showOnlyDirectDeps: boolean) => {
+const filterGraph = (nodes: FlowNode[], edges: FlowEdge[], filter: string, maxConnections: number, showOnlyDirectDeps: boolean): { nodes: FlowNode[]; edges: FlowEdge[] } => {
   let filteredNodes = nodes;
   let filteredEdges = edges;
   
   // Text filter
   if (filter.trim()) {
-    filteredNodes = nodes.filter(node => 
+    filteredNodes = nodes.filter((node: FlowNode) => 
       (node.data?.label || node.id).toLowerCase().includes(filter.toLowerCase())
     );
-    const nodeIds = new Set(filteredNodes.map(n => n.id));
-    filteredEdges = edges.filter(edge => 
+    const nodeIds = new Set(filteredNodes.map((n: FlowNode) => n.id));
+    filteredEdges = edges.filter((edge: FlowEdge) => 
       nodeIds.has(edge.source) && nodeIds.has(edge.target)
     );
   }
@@ -80,7 +107,7 @@ const filterGraph = (nodes: any[], edges: any[], filter: string, maxConnections:
   // Limit connections per node to reduce visual complexity
   if (maxConnections > 0) {
     const connectionCounts = new Map();
-    const limitedEdges = [];
+    const limitedEdges: FlowEdge[] = [];
     
     for (const edge of filteredEdges) {
       const sourceCount = connectionCounts.get(edge.source) || 0;
@@ -97,13 +124,13 @@ const filterGraph = (nodes: any[], edges: any[], filter: string, maxConnections:
   
   // Remove isolated nodes after filtering edges
   const connectedNodeIds = new Set();
-  filteredEdges.forEach((edge: any) => {
+  filteredEdges.forEach((edge: FlowEdge) => {
     connectedNodeIds.add(edge.source);
     connectedNodeIds.add(edge.target);
   });
   
   if (!filter.trim()) { // Only remove isolated nodes if no search filter
-    filteredNodes = filteredNodes.filter(node => connectedNodeIds.has(node.id));
+    filteredNodes = filteredNodes.filter((node: FlowNode) => connectedNodeIds.has(node.id));
   }
   
   return { nodes: filteredNodes, edges: filteredEdges };
@@ -123,8 +150,8 @@ export function Workspace() {
   const [analysisData, setAnalysisData] = useState<any>(null);
 
   // ReactFlow state
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([]);
   const [graphFilter, setGraphFilter] = useState('');
   const [maxConnections, setMaxConnections] = useState(3);
   const [showOnlyDirectDeps, setShowOnlyDirectDeps] = useState(true);
@@ -135,7 +162,7 @@ export function Workspace() {
   const [isChatLoading, setIsChatLoading] = useState(false);
 
   // Store raw graph data for filtering
-  const [rawGraphData, setRawGraphData] = useState<{nodes: any[], edges: any[]} | null>(null);
+  const [rawGraphData, setRawGraphData] = useState<{ nodes: FlowNode[]; edges: FlowEdge[] } | null>(null);
 
   // Effect to re-filter graph when controls change
   useEffect(() => {
@@ -168,7 +195,7 @@ export function Workspace() {
         // Format data for ReactFlow with enhanced layout and filtering
         if (data.data.graph) {
           const rawNodes = generateGraphLayout(data.data.graph.nodes, data.data.graph.edges);
-          const rawEdges = data.data.graph.edges.map((e: any) => ({
+          const rawEdges: FlowEdge[] = (data.data.graph.edges as AnalyzerGraphEdge[]).map((e: AnalyzerGraphEdge) => ({
             id: e.id,
             source: e.source,
             target: e.target,
