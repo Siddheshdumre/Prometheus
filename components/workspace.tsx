@@ -9,6 +9,7 @@ import { CodeViewer } from "./code-viewer";
 import { CommandPalette, useCommandPalette } from "./command-palette";
 import { ImpactAnalysis } from "./impact-analysis";
 import { ArchitectureOverview } from "./architecture-overview";
+import { MarkdownRenderer } from "./markdown-renderer";
 
 type NavItem = "Dashboard" | "Architecture" | "Graph Explorer" | "AI Chat" | "Impact Analyzer" | "File Explorer" | "Settings";
 
@@ -163,9 +164,123 @@ export function Workspace() {
 
   // File Explorer State
   const [selectedFile, setSelectedFile] = useState<any>(null);
+
+  // Codebase Explanation State
+  const [codebaseExplanation, setCodebaseExplanation] = useState<string | null>(null);
+  const [isExplanationLoading, setIsExplanationLoading] = useState(false);
   
   // Command Palette
   const commandPalette = useCommandPalette();
+
+  const generateCodebaseExplanation = useCallback(async (data: any) => {
+    setIsExplanationLoading(true);
+    setCodebaseExplanation(null);
+    try {
+      // Build a rich context summary for the explanation prompt
+      const topFiles = (data.files || [])
+        .slice()
+        .sort((a: any, b: any) => (b.complexity || 0) - (a.complexity || 0))
+        .slice(0, 20);
+
+      const fileList = topFiles.map((f: any) =>
+        `- ${f.path} (${f.functions?.length || 0} functions, complexity ${f.complexity || 0}, exports: ${(f.exports || []).join(', ') || 'none'})`
+      ).join('\n');
+
+      const allFunctions = (data.files || []).flatMap((f: any) =>
+        (f.functions || []).filter((fn: any) => fn.isExported).map((fn: any) => `${f.path}:${fn.name}`)
+      ).slice(0, 40);
+
+      const layers = (data.architecture?.layers || []).map((l: any) =>
+        `- ${l.name} (${l.type}): ${l.description} — ${l.files.length} files`
+      ).join('\n');
+
+      const archPattern = data.architecture?.pattern;
+      const insights = (data.architecture?.insights || []).map((i: any) =>
+        `- [${i.type.toUpperCase()}] ${i.title}: ${i.description}`
+      ).join('\n');
+
+      const externalDeps = (data.graph?.nodes || [])
+        .filter((n: any) => n.type === 'external')
+        .map((n: any) => n.label)
+        .slice(0, 30);
+
+      const message = `You are generating a comprehensive codebase overview for a developer who has never seen this repository before. Be specific, reference actual file names, function names, and libraries from the analysis data. Write in a professional but approachable tone.
+
+Produce a well-structured markdown document with the following sections. Be detailed and specific to THIS codebase — do NOT give generic advice.
+
+## 📋 Project Summary
+What this project is, its purpose, and what problem it solves. Infer from the architecture pattern, file names, and dependencies.
+
+## 🛠 Tech Stack
+List every framework, library, and language detected. Group by category (Frontend, Backend, Database, DevTools, etc.).
+
+## 🏗 Architecture Overview
+Describe the architecture pattern detected (${archPattern?.type || 'Unknown'}, confidence ${archPattern?.confidence || 0}). Explain how the code is organized into layers, what each layer does, and how they interact.
+
+## 📁 Key Files & What They Do
+For each of the most important files, explain its role in 1-2 sentences. Group by purpose (entry points, core logic, utilities, config).
+
+## 🔄 Data Flow
+Explain how data moves through the application — from entry point (user request / page load) through business logic to data layer and back. Reference specific files.
+
+## 📦 External Dependencies
+List the key third-party packages and what role they play in the project.
+
+## ⚡ Key Patterns & Conventions
+Note any naming conventions, module organization patterns, state management approaches, or architectural patterns observed.
+
+## 🔍 Observations & Recommendations
+Note any strengths, potential risks, or suggestions based on the analysis data. Reference specific files or metrics.
+
+Here is the analysis data:
+
+ARCHITECTURE PATTERN: ${archPattern?.type || 'Unknown'} (confidence: ${archPattern?.confidence || 0})
+Description: ${archPattern?.description || 'N/A'}
+Characteristics: ${(archPattern?.characteristics || []).join(', ')}
+Primary Language: ${archPattern?.primaryLanguage || 'TypeScript/JavaScript'}
+
+METRICS:
+- Total Files: ${data.metrics?.files || 0}
+- Total Functions: ${data.metrics?.functions || 0}
+- Total Classes: ${data.metrics?.classes || 0}
+- Import Dependencies: ${data.metrics?.dependencies || 0}
+- Resolved Imports: ${data.metrics?.resolvedImports || 0} (${Math.round(((data.metrics?.resolvedImports || 0) / Math.max(data.metrics?.dependencies || 1, 1)) * 100)}% resolution)
+- Cross-file Function Calls: ${data.metrics?.functionCalls || 0}
+
+LAYERS:
+${layers || 'No layers detected'}
+
+TOP FILES (by complexity):
+${fileList || 'No files'}
+
+KEY EXPORTED FUNCTIONS:
+${allFunctions.join(', ') || 'None detected'}
+
+EXTERNAL DEPENDENCIES:
+${externalDeps.join(', ') || 'None detected'}
+
+ARCHITECTURE INSIGHTS:
+${insights || 'None'}
+
+IMPORTANT: Every section must reference actual file names, function names, and libraries from the data above. Do not make up file names. If information for a section is insufficient, say so honestly and explain what you can infer.`;
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, context: data }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setCodebaseExplanation(result.reply);
+      } else {
+        setCodebaseExplanation('Failed to generate explanation: ' + (result.error || 'Unknown error'));
+      }
+    } catch (err: any) {
+      setCodebaseExplanation('Failed to generate explanation: ' + err.message);
+    } finally {
+      setIsExplanationLoading(false);
+    }
+  }, []);
 
   const handleAIQuery = (query: string) => {
     setChatMessage(query);
@@ -230,6 +345,9 @@ export function Workspace() {
       const data = await res.json();
       if (data.success) {
         setAnalysisData(data.data);
+
+        // Auto-generate codebase explanation in background
+        generateCodebaseExplanation(data.data);
 
         // Format data for ReactFlow with enhanced layout and filtering
         if (data.data.graph) {
@@ -311,7 +429,7 @@ export function Workspace() {
         </div>
 
         <button
-          onClick={() => { setAnalysisData(null); setActiveTab("Dashboard"); }}
+          onClick={() => { setAnalysisData(null); setCodebaseExplanation(null); setActiveTab("Dashboard"); }}
           className="mb-6 flex w-full items-center justify-center gap-2 rounded-md bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
         >
           <span className="text-lg leading-none">+</span> Import Repository
@@ -437,10 +555,38 @@ export function Workspace() {
                       </div>
                     </div>
 
-                    <h2 className="text-lg font-medium text-slate-200 mb-4">Recent Activity</h2>
-                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6 text-sm text-slate-400">
-                      <p>Repository imported and analyzed successfully from <code className="bg-white/10 px-1 py-0.5 rounded">{repoPathInput}</code>.</p>
-                      <p className="mt-2 text-xs text-slate-500">Extracted {analysisData.metrics.files} files and identified {analysisData.metrics.functions} functions.</p>
+                    <h2 className="text-lg font-medium text-slate-200 mb-4">Codebase Overview</h2>
+                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
+                      {isExplanationLoading ? (
+                        <div className="space-y-4 animate-pulse">
+                          <div className="flex items-center gap-3 mb-4">
+                            <Loader2 size={16} className="animate-spin text-cyan-400" />
+                            <span className="text-sm text-slate-400">Generating codebase overview with AI...</span>
+                          </div>
+                          <div className="space-y-3">
+                            <div className="h-4 bg-white/5 rounded w-3/4"></div>
+                            <div className="h-4 bg-white/5 rounded w-full"></div>
+                            <div className="h-4 bg-white/5 rounded w-5/6"></div>
+                            <div className="h-4 bg-white/5 rounded w-2/3"></div>
+                            <div className="h-3 bg-white/5 rounded w-0 mt-4"></div>
+                            <div className="h-4 bg-white/5 rounded w-4/5"></div>
+                            <div className="h-4 bg-white/5 rounded w-full"></div>
+                            <div className="h-4 bg-white/5 rounded w-3/5"></div>
+                          </div>
+                        </div>
+                      ) : codebaseExplanation ? (
+                        <MarkdownRenderer content={codebaseExplanation} />
+                      ) : (
+                        <div className="text-sm text-slate-500 text-center py-4">
+                          <p>Overview will be generated automatically after analysis.</p>
+                          <button
+                            onClick={() => analysisData && generateCodebaseExplanation(analysisData)}
+                            className="mt-2 text-cyan-400 hover:text-cyan-300 underline underline-offset-2 text-xs"
+                          >
+                            Generate now
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
