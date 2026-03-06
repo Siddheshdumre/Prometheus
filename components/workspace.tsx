@@ -177,7 +177,7 @@ export function Workspace() {
       setNodes(filteredNodes);
       setEdges(filteredEdges);
     }
-  }, [graphFilter, maxConnections, showOnlyDirectDeps, rawGraphData, setNodes, setEdges]);
+  }, [analysisData, graphFilter, maxConnections, showOnlyDirectDeps, rawGraphData, setNodes, setEdges]);
 
   const handleAnalyze = async () => {
     if (!repoPathInput) return;
@@ -754,7 +754,7 @@ export function Workspace() {
                     </div>
                   ) : chatHistory.length === 0 ? (
                     <div className="flex h-full items-center justify-center text-slate-500 text-center px-12">
-                      <p>I'm Prometheus. I've analyzed your {analysisData.metrics.files} files. What would you like to know about this repository?</p>
+                      <p>I&apos;m Prometheus. I&apos;ve analyzed your {analysisData.metrics.files} files. What would you like to know about this repository?</p>
                     </div>
                   ) : (
                     chatHistory.map((msg, idx) => (
