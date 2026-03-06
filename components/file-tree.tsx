@@ -128,7 +128,7 @@ export function FileTree({ files, selectedFile, onFileSelect }: FileTreeProps) {
         return (
             <div key={node.path} className="select-none">
                 <div
-                    className={`flex items-center gap-2 py-1.5 px-2 ml-${level * 2} rounded cursor-pointer transition-colors ${
+                    className={`flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer transition-colors ${
                         isSelected 
                             ? 'bg-cyan-500/20 text-cyan-300 border-l-2 border-cyan-400' 
                             : 'hover:bg-white/5 text-slate-400 hover:text-slate-200'

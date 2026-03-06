@@ -141,12 +141,7 @@ const filterGraph = (nodes: FlowNode[], edges: FlowEdge[], filter: string, maxCo
   return { nodes: filteredNodes, edges: filteredEdges };
 };
 
-const metrics = [
-  ["Files", "320"],
-  ["Functions", "1,200"],
-  ["Services", "7"],
-  ["Dependencies", "560"]
-];
+
 
 export function Workspace() {
   const [activeTab, setActiveTab] = useState<NavItem>("Dashboard");
@@ -352,17 +347,27 @@ export function Workspace() {
         {/* Header */}
         <header className="flex items-center justify-between border-b border-white/5 px-8 py-4">
           <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-500">Stripe Clone</span>
+            <span className="text-sm text-slate-500">
+              {repoPathInput
+                ? (repoPathInput.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'Repository')
+                : 'Prometheus'}
+            </span>
             <span className="text-slate-700">/</span>
             <span className="text-sm font-medium text-slate-200">{activeTab}</span>
           </div>
           <div className="flex items-center gap-4 text-xs text-slate-500">
-            <div className="flex items-center gap-1.5">
-              <div className="h-2 w-2 rounded-full bg-emerald-500/80"></div>
-              Analysis Complete
-            </div>
-            <span className="text-slate-700">|</span>
-            <span>Last updated: 2m ago</span>
+            {analysisData ? (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <div className="h-2 w-2 rounded-full bg-emerald-500/80"></div>
+                  Analysis Complete
+                </div>
+                <span className="text-slate-700">|</span>
+                <span>{analysisData.metrics.files} files · {analysisData.metrics.functions} functions</span>
+              </>
+            ) : (
+              <span>No repository loaded</span>
+            )}
           </div>
         </header>
 

@@ -178,12 +178,12 @@ function analyzeFileImpact(filePath: string, data: any): ImpactResult {
         riskScore,
         riskFactors,
         centrality,
-        summary: { totalAffected, filesAffected: totalAffacted(directImpacts, indirectImpacts), functionsAffected: 0 },
+        summary: { totalAffected, filesAffected: countAffectedFiles(directImpacts, indirectImpacts), functionsAffected: 0 },
     };
 }
 
 // Small helper to count unique files
-function totalAffacted(direct: any[], indirect: any[]) {
+function countAffectedFiles(direct: any[], indirect: any[]) {
     return new Set([...direct.map(d => d.path), ...indirect.map(d => d.path)]).size;
 }
 

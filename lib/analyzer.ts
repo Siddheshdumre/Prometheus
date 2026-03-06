@@ -135,45 +135,71 @@ export interface GraphEdge {
 }
 
 class ImportResolver {
-    constructor(private repoPath: string, private sourceFiles: SourceFile[]) {}
+    private tsconfigAliases: Array<{ prefix: string; targetDir: string }> = [];
+
+    constructor(private repoPath: string, private sourceFiles: SourceFile[]) {
+        this.loadTsconfigPaths();
+    }
+
+    private loadTsconfigPaths() {
+        const tsconfigPath = path.join(this.repoPath, 'tsconfig.json');
+        try {
+            let content = fs.readFileSync(tsconfigPath, 'utf8');
+            // Strip comments (tsconfig.json allows them)
+            content = content.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+            const tsconfig = JSON.parse(content);
+            const compilerOptions = tsconfig.compilerOptions || {};
+            const baseUrl = compilerOptions.baseUrl || '.';
+            const paths: Record<string, string[]> = compilerOptions.paths || {};
+            const baseDir = path.resolve(this.repoPath, baseUrl);
+            for (const [alias, targets] of Object.entries(paths)) {
+                if (!Array.isArray(targets) || targets.length === 0) continue;
+                const cleanAlias = alias.replace(/\/\*$/, '');
+                const cleanTarget = targets[0].replace(/\/\*$/, '');
+                this.tsconfigAliases.push({
+                    prefix: cleanAlias,
+                    targetDir: path.resolve(baseDir, cleanTarget),
+                });
+            }
+        } catch { /* tsconfig.json not found or unparseable — skip */ }
+    }
+
+    private tryResolve(resolvedBase: string): string | null {
+        const extensions = ['', '.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx', '/index.js', '/index.jsx'];
+        for (const ext of extensions) {
+            const testPath = resolvedBase + ext;
+            const relativePath = path.relative(this.repoPath, testPath).replace(/\\/g, '/');
+            if (this.sourceFiles.some(sf => {
+                const sfRelative = path.relative(this.repoPath, sf.getFilePath()).replace(/\\/g, '/');
+                return sfRelative === relativePath;
+            })) {
+                return relativePath;
+            }
+        }
+        return null;
+    }
 
     resolveImportPath(importPath: string, currentFilePath: string): string | null {
-        const extensions = ['', '.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx', '/index.js', '/index.jsx'];
-
-        // Handle relative imports
+        // Handle relative imports (./ and ../)
         if (importPath.startsWith('./') || importPath.startsWith('../')) {
             const currentDir = path.dirname(currentFilePath);
-            const resolvedPath = path.resolve(currentDir, importPath);
-            
-            for (const ext of extensions) {
-                const testPath = resolvedPath + ext;
-                const relativePath = path.relative(this.repoPath, testPath).replace(/\\/g, '/');
-                if (this.sourceFiles.some(sf => {
-                    const sfRelative = path.relative(this.repoPath, sf.getFilePath().replace(/\\/g, '/')).replace(/\\/g, '/');
-                    return sfRelative === relativePath;
-                })) {
-                    return relativePath;
-                }
-            }
+            return this.tryResolve(path.resolve(currentDir, importPath));
         }
 
-        // Handle @/ alias (Next.js / tsconfig paths alias pointing to repo root)
+        // Handle @/ alias (Next.js convention — maps to repo root)
         if (importPath.startsWith('@/')) {
-            const aliasPath = importPath.slice(2); // strip '@/'
-            const resolvedPath = path.join(this.repoPath, aliasPath);
+            return this.tryResolve(path.join(this.repoPath, importPath.slice(2)));
+        }
 
-            for (const ext of extensions) {
-                const testPath = resolvedPath + ext;
-                const relativePath = path.relative(this.repoPath, testPath).replace(/\\/g, '/');
-                if (this.sourceFiles.some(sf => {
-                    const sfRelative = path.relative(this.repoPath, sf.getFilePath().replace(/\\/g, '/')).replace(/\\/g, '/');
-                    return sfRelative === relativePath;
-                })) {
-                    return relativePath;
-                }
+        // Handle tsconfig.json path aliases (e.g. ~/, src/, @components/, etc.)
+        for (const { prefix, targetDir } of this.tsconfigAliases) {
+            if (importPath === prefix || importPath.startsWith(prefix + '/')) {
+                const rest = importPath.slice(prefix.length).replace(/^\//, '');
+                const result = this.tryResolve(path.join(targetDir, rest));
+                if (result) return result;
             }
         }
-        
+
         return null;
     }
 
@@ -184,7 +210,7 @@ class ImportResolver {
         return imports.map(importDecl => {
             const original = importDecl.getModuleSpecifierValue();
             const resolved = this.resolveImportPath(original, currentFilePath);
-            const isExternal = !original.startsWith('./') && !original.startsWith('../') && !original.startsWith('@/');
+            const isExternal = !original.startsWith('./') && !original.startsWith('../') && resolved === null;
             const importedMembers = importDecl.getNamedImports().map(ni => ni.getName());
             
             return {
@@ -274,14 +300,34 @@ const SKIP_DIRS = new Set([
     '.pytest_cache', '.tox', 'eggs', '.eggs', 'htmlcov',
 ]);
 
-function walkDir(dir: string): string[] {
+function loadGitignorePatterns(repoPath: string): Set<string> {
+    const gitignorePath = path.join(repoPath, '.gitignore');
+    const ignoredNames = new Set<string>();
+    try {
+        const content = fs.readFileSync(gitignorePath, 'utf8');
+        for (const line of content.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('!')) continue;
+            // Only handle simple name-only patterns (no slashes, no wildcards)
+            // e.g. "dist", ".env", "coverage" — skip glob patterns like "*.log"
+            const normalized = trimmed.replace(/\/$/, '').replace(/^\//, '');
+            if (normalized && !normalized.includes('/') && !normalized.includes('*') && !normalized.includes('?')) {
+                ignoredNames.add(normalized);
+            }
+        }
+    } catch { /* .gitignore not found or unreadable */ }
+    return ignoredNames;
+}
+
+function walkDir(dir: string, extraSkip?: Set<string>): string[] {
     const results: string[] = [];
     try {
         const entries = fs.readdirSync(dir, { withFileTypes: true });
         for (const entry of entries) {
             if (SKIP_DIRS.has(entry.name)) continue;
+            if (extraSkip?.has(entry.name)) continue;
             const full = path.join(dir, entry.name);
-            if (entry.isDirectory()) results.push(...walkDir(full));
+            if (entry.isDirectory()) results.push(...walkDir(full, extraSkip));
             else results.push(full);
         }
     } catch { /* skip unreadable */ }
@@ -1126,7 +1172,8 @@ export async function analyzeRepository(repoPath: string): Promise<AnalysisResul
     const normalizedRepoPath = repoPath.replace(/\\/g, '/');
 
     // ── 1. Discover all source files and detect language composition ────────
-    const allFiles = walkDir(normalizedRepoPath);
+    const gitignoreExtra = loadGitignorePatterns(normalizedRepoPath);
+    const allFiles = walkDir(normalizedRepoPath, gitignoreExtra);
     const langCounts = detectLanguages(allFiles);
 
     const tsJsCount  = (langCounts.typescript || 0) + (langCounts.javascript || 0);
