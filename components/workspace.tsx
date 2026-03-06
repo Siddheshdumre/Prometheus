@@ -1,146 +1,28 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect } from "react";
-import { BrainCircuit, FolderTree, GitGraph, LayoutDashboard, SearchCode, Settings, Sparkles, FolderCode, Loader2 } from "lucide-react";
-import { ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState, type Node, type Edge } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
+import { useState, useCallback, useEffect } from "react";
+import { BrainCircuit, FolderTree, Network, LayoutDashboard, SearchCode, Settings, Sparkles, FolderCode, Loader2, Copy, Check, RefreshCw } from "lucide-react";
 import { FileTree } from "./file-tree";
 import { CodeViewer } from "./code-viewer";
 import { CommandPalette, useCommandPalette } from "./command-palette";
 import { ImpactAnalysis } from "./impact-analysis";
 import { ArchitectureOverview } from "./architecture-overview";
 import { MarkdownRenderer } from "./markdown-renderer";
+import { ProjectTree } from "./project-tree";
 
-type NavItem = "Dashboard" | "Architecture" | "Graph Explorer" | "AI Chat" | "Impact Analyzer" | "File Explorer" | "Settings";
+type NavItem = "Dashboard" | "Architecture" | "Project Structure" | "AI Chat" | "Impact Analyzer" | "File Explorer" | "Settings";
 
 const navItems: { label: NavItem; icon: React.ElementType }[] = [
   { label: "Dashboard", icon: LayoutDashboard },
   { label: "File Explorer", icon: FolderCode },
   { label: "Architecture", icon: FolderTree },
-  { label: "Graph Explorer", icon: GitGraph },
+  { label: "Project Structure", icon: Network },
   { label: "AI Chat", icon: BrainCircuit },
   { label: "Impact Analyzer", icon: SearchCode },
   { label: "Settings", icon: Settings }
 ];
 
-type FlowNodeData = {
-  label: string;
-  complexity?: number;
-  size?: number;
-};
 
-type FlowNode = Node<FlowNodeData>;
-type FlowEdge = Edge;
-
-type AnalyzerGraphNode = {
-  id: string;
-  label: string;
-  type: 'file' | 'function' | 'external';
-  group?: string;
-  complexity?: number;
-  size?: number;
-};
-
-type AnalyzerGraphEdge = {
-  id: string;
-  source: string;
-  target: string;
-  type: 'imports' | 'calls';
-  weight: number;
-};
-
-const generateGraphLayout = (nodes: AnalyzerGraphNode[], edges: AnalyzerGraphEdge[]): FlowNode[] => {
-  // Group nodes by directory for better clustering  
-  const nodesByGroup = nodes.reduce<Record<string, AnalyzerGraphNode[]>>((acc, node) => {
-    const group = node.group || 'root';
-    if (!acc[group]) acc[group] = [];
-    acc[group].push(node);
-    return acc;
-  }, {});
-  
-  let globalY = 0;
-  const positioned: FlowNode[] = [];
-
-  Object.entries(nodesByGroup).forEach(([group, groupNodes]) => {
-    groupNodes.forEach((node: AnalyzerGraphNode, idx: number) => {
-      const isExternal = node.type === 'external';
-      const complexity = node.complexity ?? 0;
-      positioned.push({
-        ...node,
-        data: { 
-          label: node.label || node.id.split('/').pop() || node.id,
-          complexity: node.complexity,
-          size: node.size
-        },
-        position: { 
-          x: (idx % 4) * 220 + Math.random() * 15,
-          y: globalY + Math.floor(idx / 4) * 100 + Math.random() * 15
-        },
-        style: {
-          background: isExternal ? '#374151' : complexity > 10 ? '#dc2626' : complexity > 5 ? '#f59e0b' : '#1e293b',
-          color: '#e2e8f0',
-          border: isExternal ? '1px solid #6b7280' : '1px solid #334155',
-          borderRadius: '6px',
-          padding: '6px 10px',
-          fontSize: '10px',
-          minWidth: '120px'
-        },
-        className: isExternal ? 'external-node' : 'file-node'
-      });
-    });
-    globalY += Math.ceil(groupNodes.length / 4) * 100 + 60;
-  });
-  
-  return positioned;
-};
-
-// Helper function to filter and simplify the graph
-const filterGraph = (nodes: FlowNode[], edges: FlowEdge[], filter: string, maxConnections: number, showOnlyDirectDeps: boolean): { nodes: FlowNode[]; edges: FlowEdge[] } => {
-  let filteredNodes = nodes;
-  let filteredEdges = edges;
-  
-  // Text filter
-  if (filter.trim()) {
-    filteredNodes = nodes.filter((node: FlowNode) => 
-      (node.data?.label || node.id).toLowerCase().includes(filter.toLowerCase())
-    );
-    const nodeIds = new Set(filteredNodes.map((n: FlowNode) => n.id));
-    filteredEdges = edges.filter((edge: FlowEdge) => 
-      nodeIds.has(edge.source) && nodeIds.has(edge.target)
-    );
-  }
-  
-  // Limit connections per node to reduce visual complexity
-  if (maxConnections > 0) {
-    const connectionCounts = new Map();
-    const limitedEdges: FlowEdge[] = [];
-    
-    for (const edge of filteredEdges) {
-      const sourceCount = connectionCounts.get(edge.source) || 0;
-      const targetCount = connectionCounts.get(edge.target) || 0;
-      
-      if (sourceCount < maxConnections && targetCount < maxConnections) {
-        limitedEdges.push(edge);
-        connectionCounts.set(edge.source, sourceCount + 1);
-        connectionCounts.set(edge.target, targetCount + 1);
-      }
-    }
-    filteredEdges = limitedEdges;
-  }
-  
-  // Remove isolated nodes after filtering edges
-  const connectedNodeIds = new Set();
-  filteredEdges.forEach((edge: FlowEdge) => {
-    connectedNodeIds.add(edge.source);
-    connectedNodeIds.add(edge.target);
-  });
-  
-  if (!filter.trim()) { // Only remove isolated nodes if no search filter
-    filteredNodes = filteredNodes.filter((node: FlowNode) => connectedNodeIds.has(node.id));
-  }
-  
-  return { nodes: filteredNodes, edges: filteredEdges };
-};
 
 
 
@@ -150,12 +32,7 @@ export function Workspace() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisData, setAnalysisData] = useState<any>(null);
 
-  // ReactFlow state
-  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([]);
-  const [graphFilter, setGraphFilter] = useState('');
-  const [maxConnections, setMaxConnections] = useState(3);
-  const [showOnlyDirectDeps, setShowOnlyDirectDeps] = useState(true);
+
 
   // AI Chat State
   const [chatMessage, setChatMessage] = useState("");
@@ -168,6 +45,14 @@ export function Workspace() {
   // Codebase Explanation State
   const [codebaseExplanation, setCodebaseExplanation] = useState<string | null>(null);
   const [isExplanationLoading, setIsExplanationLoading] = useState(false);
+  const [explanationLoadingStep, setExplanationLoadingStep] = useState(0);
+  const [copiedExplanation, setCopiedExplanation] = useState(false);
+
+  useEffect(() => {
+    if (!isExplanationLoading) return;
+    const interval = setInterval(() => setExplanationLoadingStep(s => s + 1), 2500);
+    return () => clearInterval(interval);
+  }, [isExplanationLoading]);
   
   // Command Palette
   const commandPalette = useCommandPalette();
@@ -267,13 +152,48 @@ IMPORTANT: Every section must reference actual file names, function names, and l
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, context: data }),
+        body: JSON.stringify({ message, context: data, stream: true }),
       });
-      const result = await res.json();
-      if (result.success) {
-        setCodebaseExplanation(result.reply);
-      } else {
-        setCodebaseExplanation('Failed to generate explanation: ' + (result.error || 'Unknown error'));
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({ error: 'Unknown error' }));
+        setCodebaseExplanation('Failed to generate explanation: ' + (errBody.error || res.statusText));
+        return;
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) {
+        setCodebaseExplanation('Streaming not supported by the browser.');
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let accumulated = '';
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const payload = line.slice(6);
+            if (payload === '[DONE]') break;
+            try {
+              const parsed = JSON.parse(payload);
+              if (parsed.text) {
+                accumulated += parsed.text;
+                setCodebaseExplanation(accumulated);
+              }
+            } catch { /* skip malformed */ }
+          }
+        }
+      }
+
+      if (!accumulated) {
+        setCodebaseExplanation('No response received from AI.');
       }
     } catch (err: any) {
       setCodebaseExplanation('Failed to generate explanation: ' + err.message);
@@ -315,23 +235,7 @@ IMPORTANT: Every section must reference actual file names, function names, and l
     }
   };
 
-  // Store raw graph data for filtering
-  const [rawGraphData, setRawGraphData] = useState<{ nodes: FlowNode[]; edges: FlowEdge[] } | null>(null);
 
-  // Effect to re-filter graph when controls change
-  useEffect(() => {
-    if (rawGraphData && analysisData) {
-      const { nodes: filteredNodes, edges: filteredEdges } = filterGraph(
-        rawGraphData.nodes, 
-        rawGraphData.edges, 
-        graphFilter, 
-        maxConnections, 
-        showOnlyDirectDeps
-      );
-      setNodes(filteredNodes);
-      setEdges(filteredEdges);
-    }
-  }, [analysisData, graphFilter, maxConnections, showOnlyDirectDeps, rawGraphData, setNodes, setEdges]);
 
   const handleAnalyze = async () => {
     if (!repoPathInput) return;
@@ -348,31 +252,6 @@ IMPORTANT: Every section must reference actual file names, function names, and l
 
         // Auto-generate codebase explanation in background
         generateCodebaseExplanation(data.data);
-
-        // Format data for ReactFlow with enhanced layout and filtering
-        if (data.data.graph) {
-          const rawNodes = generateGraphLayout(data.data.graph.nodes, data.data.graph.edges);
-          const rawEdges: FlowEdge[] = (data.data.graph.edges as AnalyzerGraphEdge[]).map((e: AnalyzerGraphEdge) => ({
-            id: e.id,
-            source: e.source,
-            target: e.target,
-            animated: e.type === 'calls',
-            style: { 
-              stroke: e.type === 'calls' ? '#f59e0b' : '#06b6d4',
-              strokeWidth: Math.min(e.weight || 1, 3)
-            },
-            label: e.type === 'calls' ? 'calls' : '',
-            labelStyle: { fontSize: '10px', fill: '#94a3b8' }
-          }));
-          
-          // Store raw data for filtering
-          setRawGraphData({ nodes: rawNodes, edges: rawEdges });
-          
-          // Apply initial filtering (limit connections to reduce initial complexity)
-          const { nodes: filteredNodes, edges: filteredEdges } = filterGraph(rawNodes, rawEdges, graphFilter, maxConnections, showOnlyDirectDeps);
-          setNodes(filteredNodes);
-          setEdges(filteredEdges);
-        }
 
         setActiveTab("Dashboard");
       } else {
@@ -555,27 +434,57 @@ IMPORTANT: Every section must reference actual file names, function names, and l
                       </div>
                     </div>
 
-                    <h2 className="text-lg font-medium text-slate-200 mb-4">Codebase Overview</h2>
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-lg font-medium text-slate-200">Codebase Overview</h2>
+                      {codebaseExplanation && !isExplanationLoading && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(codebaseExplanation);
+                              setCopiedExplanation(true);
+                              setTimeout(() => setCopiedExplanation(false), 2000);
+                            }}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-200 bg-white/5 hover:bg-white/10 transition-colors"
+                          >
+                            {copiedExplanation ? <Check size={13} /> : <Copy size={13} />}
+                            {copiedExplanation ? 'Copied' : 'Copy'}
+                          </button>
+                          <button
+                            onClick={() => analysisData && generateCodebaseExplanation(analysisData)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-200 bg-white/5 hover:bg-white/10 transition-colors"
+                          >
+                            <RefreshCw size={13} />
+                            Regenerate
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
-                      {isExplanationLoading ? (
-                        <div className="space-y-4 animate-pulse">
+                      {isExplanationLoading && !codebaseExplanation ? (
+                        <div className="space-y-4">
                           <div className="flex items-center gap-3 mb-4">
                             <Loader2 size={16} className="animate-spin text-cyan-400" />
-                            <span className="text-sm text-slate-400">Generating codebase overview with AI...</span>
+                            <span className="text-sm text-slate-400">
+                              {['Analyzing architecture...', 'Mapping dependencies...', 'Identifying key files...', 'Generating overview...'][explanationLoadingStep % 4]}
+                            </span>
                           </div>
-                          <div className="space-y-3">
+                          <div className="space-y-3 animate-pulse">
                             <div className="h-4 bg-white/5 rounded w-3/4"></div>
                             <div className="h-4 bg-white/5 rounded w-full"></div>
                             <div className="h-4 bg-white/5 rounded w-5/6"></div>
                             <div className="h-4 bg-white/5 rounded w-2/3"></div>
-                            <div className="h-3 bg-white/5 rounded w-0 mt-4"></div>
-                            <div className="h-4 bg-white/5 rounded w-4/5"></div>
-                            <div className="h-4 bg-white/5 rounded w-full"></div>
-                            <div className="h-4 bg-white/5 rounded w-3/5"></div>
                           </div>
                         </div>
                       ) : codebaseExplanation ? (
-                        <MarkdownRenderer content={codebaseExplanation} />
+                        <div>
+                          <MarkdownRenderer content={codebaseExplanation} />
+                          {isExplanationLoading && (
+                            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-white/5">
+                              <Loader2 size={14} className="animate-spin text-cyan-400" />
+                              <span className="text-xs text-slate-500">Still generating...</span>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <div className="text-sm text-slate-500 text-center py-4">
                           <p>Overview will be generated automatically after analysis.</p>
@@ -630,84 +539,14 @@ IMPORTANT: Every section must reference actual file names, function names, and l
               </div>
             )}
 
-            {activeTab === "Graph Explorer" && (
+            {activeTab === "Project Structure" && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 h-[600px] flex flex-col">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h1 className="text-2xl font-light tracking-tight text-white mb-2">Dependency Graph</h1>
-                    <p className="text-sm text-slate-500">Interactive visualization of module imports and calls.</p>
-                  </div>
-                  
-                  {/* Graph Controls */}
-                  {analysisData && (
-                    <div className="flex items-center gap-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        <label className="text-slate-400">Filter:</label>
-                        <input
-                          type="text"
-                          value={graphFilter}
-                          onChange={(e) => setGraphFilter(e.target.value)}
-                          placeholder="Search nodes..."
-                          className="px-2 py-1 bg-white/5 border border-white/10 rounded text-white text-xs w-32 focus:outline-none focus:border-cyan-500/50"
-                        />
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <label className="text-slate-400">Max connections:</label>
-                        <select
-                          value={maxConnections}
-                          onChange={(e) => setMaxConnections(Number(e.target.value))}
-                          className="px-2 py-1 bg-white/5 border border-white/10 rounded text-white text-xs focus:outline-none focus:border-cyan-500/50"
-                        >
-                          <option value={0}>All</option>
-                          <option value={2}>2</option>
-                          <option value={3}>3</option>
-                          <option value={5}>5</option>
-                          <option value={10}>10</option>
-                        </select>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          setGraphFilter('');
-                          setMaxConnections(3);
-                          setShowOnlyDirectDeps(true);
-                        }}
-                        className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded transition-colors"
-                      >
-                        Reset
-                      </button>
-                    </div>
-                  )}
+                <div className="mb-4">
+                  <h1 className="text-2xl font-light tracking-tight text-white mb-2">Project Structure</h1>
+                  <p className="text-sm text-slate-500">Working tree with annotations for every file and folder.</p>
                 </div>
-
-                <div className="flex-1 rounded-xl border border-white/5 bg-[#050505] relative overflow-hidden">
-                  {!analysisData ? (
-                    <div className="absolute inset-0 flex items-center justify-center text-slate-600">
-                      Import a repository to view the graph.
-                    </div>
-                  ) : (
-                    <div style={{ width: '100%', height: '100%' }}>
-                      <ReactFlow
-                        nodes={nodes}
-                        edges={edges}
-                        onNodesChange={onNodesChange}
-                        onEdgesChange={onEdgesChange}
-                        fitView
-                        colorMode="dark"
-                        maxZoom={2}
-                        minZoom={0.1}
-                      >
-                        <Controls style={{ padding: '4px', backgroundColor: '#1e293b', border: '1px solid #334155' }} />
-                        <MiniMap
-                          nodeColor="#334155"
-                          maskColor="rgb(15, 23, 42, 0.7)"
-                          style={{ backgroundColor: '#020617', border: '1px solid #1e293b' }}
-                        />
-                        <Background color="#334155" gap={24} size={1} />
-                      </ReactFlow>
-                    </div>
-                  )}
+                <div className="flex-1 min-h-0">
+                  <ProjectTree analysisData={analysisData} />
                 </div>
               </div>
             )}
