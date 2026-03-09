@@ -7,7 +7,16 @@
 }
 
 body {
-  @apply bg-slate-950 text-slate-100 antialiased;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  @apply bg-[#0A0A0A] text-slate-100 antialiased;
+  background-image:
+    radial-gradient(ellipse 90% 45% at 50% -5%, rgba(251, 146, 60, 0.07) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 30% at 80% 10%, rgba(34, 211, 238, 0.04) 0%, transparent 60%);
+  background-attachment: fixed;
+}
+
+code, kbd, pre, .font-mono {
+  font-family: var(--font-mono), monospace;
 }
 
 .panel {

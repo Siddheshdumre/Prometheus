@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { BrainCircuit, FolderTree, Network, LayoutDashboard, SearchCode, Settings, Sparkles, FolderCode, Loader2, Copy, Check, RefreshCw } from "lucide-react";
+import { BrainCircuit, FolderTree, Network, LayoutDashboard, SearchCode, Settings, Sparkles, FolderCode, Loader2, Copy, Check, RefreshCw, Flame, FileCode2, Braces, Layers, GitBranch, CheckCircle2, Zap, FileDown } from "lucide-react";
+import { exportReportAsPdf } from "../lib/pdf-export";
 import { FileTree } from "./file-tree";
 import { CodeViewer } from "./code-viewer";
 import { CommandPalette, useCommandPalette } from "./command-palette";
@@ -10,6 +11,7 @@ import { ArchitectureOverview } from "./architecture-overview";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ProjectTree } from "./project-tree";
 import { PrometheusIllustration } from "./prometheus-illustration";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 
 type NavItem = "Dashboard" | "Architecture" | "Project Structure" | "AI Chat" | "Impact Analyzer" | "File Explorer" | "Settings";
 
@@ -22,6 +24,28 @@ const navItems: { label: NavItem; icon: React.ElementType }[] = [
   { label: "Impact Analyzer", icon: SearchCode },
   { label: "Settings", icon: Settings }
 ];
+
+const METRIC_CARDS = [
+  { key: "files",         label: "Files",       icon: FileCode2,    color: "blue",    border: "border-blue-500/20",    bg: "bg-blue-500/[0.07]",    iconColor: "text-blue-400",    topBar: "from-blue-500/40" },
+  { key: "functions",     label: "Functions",   icon: Braces,       color: "purple",  border: "border-purple-500/20",  bg: "bg-purple-500/[0.07]",  iconColor: "text-purple-400",  topBar: "from-purple-500/40" },
+  { key: "classes",       label: "Classes",     icon: Layers,       color: "amber",   border: "border-amber-500/20",   bg: "bg-amber-500/[0.07]",   iconColor: "text-amber-400",   topBar: "from-amber-500/40" },
+  { key: "dependencies",  label: "Imports",     icon: GitBranch,    color: "cyan",    border: "border-cyan-500/20",    bg: "bg-cyan-500/[0.07]",    iconColor: "text-cyan-400",    topBar: "from-cyan-500/40" },
+  { key: "resolvedImports",label: "Resolved",   icon: CheckCircle2, color: "emerald", border: "border-emerald-500/20", bg: "bg-emerald-500/[0.07]", iconColor: "text-emerald-400", topBar: "from-emerald-500/40" },
+  { key: "functionCalls", label: "Call Graph",  icon: Zap,          color: "rose",    border: "border-rose-500/20",    bg: "bg-rose-500/[0.07]",    iconColor: "text-rose-400",    topBar: "from-rose-500/40" },
+] as const;
+
+const SUGGESTED_PROMPTS = [
+  "What are the most complex files?",
+  "Explain the data flow",
+  "Which functions are called the most?",
+  "Find potential circular dependencies",
+];
+
+const TAB_VARIANTS: Variants = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.18, ease: [0.4, 0, 0.2, 1] } },
+  exit:    { opacity: 0, y: -6, transition: { duration: 0.12, ease: [0.4, 0, 1, 1] } },
+};
 
 
 
@@ -301,31 +325,35 @@ IMPORTANT: Every section must reference actual file names, function names, and l
     <main className="grid min-h-screen grid-cols-[240px_1fr] bg-[#0A0A0A] text-slate-300 selection:bg-cyan-500/30">
       {/* Sidebar */}
       <aside className="flex flex-col border-r border-white/5 bg-black/20 p-4">
-        <div className="mb-8 flex items-center gap-2 px-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-cyan-500/20 text-cyan-400">
-            <Sparkles size={14} />
+        <div className="mb-8 flex items-center gap-3 px-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500/30 to-amber-600/20 border border-orange-500/20 shadow-lg shadow-orange-500/10">
+            <Flame size={16} className="text-orange-400" />
           </div>
-          <span className="text-sm font-medium tracking-wide text-slate-200">PROMETHEUS</span>
+          <div>
+            <span className="text-sm font-bold tracking-wider text-white">PROMETHEUS</span>
+            <p className="text-[10px] text-slate-500 leading-none mt-0.5">Codebase Intelligence</p>
+          </div>
         </div>
 
         <button
           onClick={() => { setAnalysisData(null); setCodebaseExplanation(null); setActiveTab("Dashboard"); }}
-          className="mb-6 flex w-full items-center justify-center gap-2 rounded-md bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
+          className="mb-6 flex w-full items-center justify-center gap-2 rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 py-2 text-sm font-medium text-orange-400 transition-all hover:bg-orange-500/20 hover:border-orange-500/35"
         >
-          <span className="text-lg leading-none">+</span> Import Repository
+          <Flame size={14} /> Import Repository
         </button>
 
-        <nav className="flex-1 space-y-1">
+        <nav className="flex-1 space-y-0.5">
           {navItems.map(({ label, icon: Icon }) => (
             <button
               key={label}
               onClick={() => setActiveTab(label)}
-              className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-all duration-200 ${activeTab === label
-                ? "bg-cyan-500/10 text-cyan-400 font-medium"
-                : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
-                }`}
+              className={`relative flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-all duration-150 ${
+                activeTab === label
+                  ? "bg-white/[0.06] text-white font-medium before:absolute before:left-0 before:top-1/4 before:h-1/2 before:w-0.5 before:rounded-r-full before:bg-orange-400"
+                  : "text-slate-500 hover:bg-white/[0.04] hover:text-slate-300"
+              }`}
             >
-              <Icon size={16} className={activeTab === label ? "text-cyan-400" : "text-slate-500"} />
+              <Icon size={15} className={activeTab === label ? "text-orange-400" : "text-slate-600"} />
               {label}
             </button>
           ))}
@@ -372,8 +400,9 @@ IMPORTANT: Every section must reference actual file names, function names, and l
         {/* Dynamic Content */}
         <div className="flex-1 overflow-y-auto p-8">
           <div className="mx-auto max-w-5xl">
+            <AnimatePresence mode="wait">
             {activeTab === "Dashboard" && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <motion.div key="Dashboard" variants={TAB_VARIANTS} initial="initial" animate="animate" exit="exit">
                 {analysisData && (
                   <h1 className="text-2xl font-light tracking-tight text-white mb-8">Repository Overview</h1>
                 )}
@@ -442,31 +471,22 @@ IMPORTANT: Every section must reference actual file names, function names, and l
                 ) : (
                   <>
                     <div className="grid grid-cols-6 gap-4 mb-12">
-                      <div className="flex flex-col rounded-xl border border-white/5 bg-white/[0.02] p-5">
-                        <span className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-2">Files</span>
-                        <span className="text-3xl font-light text-slate-200">{analysisData.metrics.files}</span>
-                      </div>
-                      <div className="flex flex-col rounded-xl border border-white/5 bg-white/[0.02] p-5">
-                        <span className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-2">Functions</span>
-                        <span className="text-3xl font-light text-slate-200">{analysisData.metrics.functions}</span>
-                      </div>
-                      <div className="flex flex-col rounded-xl border border-white/5 bg-white/[0.02] p-5">
-                        <span className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-2">Classes</span>
-                        <span className="text-3xl font-light text-slate-200">{analysisData.metrics.classes}</span>
-                      </div>
-                      <div className="flex flex-col rounded-xl border border-white/5 bg-white/[0.02] p-5">
-                        <span className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-2">Dependencies</span>
-                        <span className="text-3xl font-light text-slate-200">{analysisData.metrics.dependencies}</span>
-                      </div>
-                      <div className="flex flex-col rounded-xl border border-white/5 bg-white/[0.02] p-5">
-                        <span className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-2">Resolved</span>
-                        <span className="text-3xl font-light text-slate-200">{analysisData.metrics.resolvedImports}</span>
-                        <span className="text-xs text-slate-500">{Math.round((analysisData.metrics.resolvedImports / Math.max(analysisData.metrics.dependencies, 1)) * 100)}%</span>
-                      </div>
-                      <div className="flex flex-col rounded-xl border border-white/5 bg-white/[0.02] p-5">
-                        <span className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-2">Calls</span>
-                        <span className="text-3xl font-light text-slate-200">{analysisData.metrics.functionCalls || 0}</span>
-                      </div>
+                      {METRIC_CARDS.map(({ key, label, icon: Icon, border, bg, iconColor, topBar }) => {
+                        const raw = key === "functionCalls"
+                          ? (analysisData.metrics.functionCalls || 0)
+                          : (analysisData.metrics as any)[key] ?? 0;
+                        const display = key === "resolvedImports"
+                          ? `${Math.round((raw / Math.max(analysisData.metrics.dependencies, 1)) * 100)}%`
+                          : raw;
+                        return (
+                          <div key={key} className={`relative overflow-hidden flex flex-col rounded-xl border ${border} ${bg} p-5 hover:-translate-y-0.5 transition-transform duration-150`}>
+                            <div className={`absolute top-0 right-0 h-px w-2/3 bg-gradient-to-l ${topBar} to-transparent`} />
+                            <Icon size={16} className={`${iconColor} mb-3 opacity-80`} />
+                            <span className="tabular-nums text-3xl font-semibold text-white leading-none">{display}</span>
+                            <span className="text-xs text-slate-500 mt-1.5 uppercase tracking-wider">{label}</span>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     <div className="flex items-center justify-between mb-4">
@@ -490,6 +510,26 @@ IMPORTANT: Every section must reference actual file names, function names, and l
                           >
                             <RefreshCw size={13} />
                             Regenerate
+                          </button>
+                          <button
+                            onClick={() =>
+                              exportReportAsPdf(
+                                codebaseExplanation,
+                                repoPathInput,
+                                {
+                                  files:           analysisData?.files?.length,
+                                  functions:       analysisData?.metrics?.totalFunctions,
+                                  classes:         analysisData?.metrics?.totalClasses,
+                                  dependencies:    analysisData?.metrics?.totalDependencies,
+                                  resolvedImports: analysisData?.metrics?.resolvedImports,
+                                  functionCalls:   analysisData?.metrics?.totalFunctionCalls,
+                                }
+                              )
+                            }
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-white bg-orange-500/20 hover:bg-orange-500/35 border border-orange-500/30 hover:border-orange-500/50 transition-colors"
+                          >
+                            <FileDown size={13} />
+                            Export PDF
                           </button>
                         </div>
                       )}
@@ -534,11 +574,11 @@ IMPORTANT: Every section must reference actual file names, function names, and l
                     </div>
                   </>
                 )}
-              </div>
+              </motion.div>
             )}
 
             {activeTab === "File Explorer" && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 h-[600px] flex">
+              <motion.div key="File Explorer" variants={TAB_VARIANTS} initial="initial" animate="animate" exit="exit" className="h-[600px] flex">
                 <div className="w-80 border-r border-white/5">
                   {!analysisData ? (
                     <div className="p-4 text-slate-600 text-center text-sm">
@@ -555,11 +595,11 @@ IMPORTANT: Every section must reference actual file names, function names, and l
                 <div className="flex-1 pl-6">
                   <CodeViewer file={selectedFile} repoPath={repoPathInput} />
                 </div>
-              </div>
+              </motion.div>
             )}
 
             {activeTab === "Architecture" && (
-              <div>
+              <motion.div key="Architecture" variants={TAB_VARIANTS} initial="initial" animate="animate" exit="exit">
                 {!analysisData ? (
                   <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
                     <h1 className="text-2xl font-light tracking-tight text-white mb-2">Architecture Overview</h1>
@@ -571,11 +611,11 @@ IMPORTANT: Every section must reference actual file names, function names, and l
                 ) : (
                   <ArchitectureOverview analysisData={analysisData} />
                 )}
-              </div>
+              </motion.div>
             )}
 
             {activeTab === "Project Structure" && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 h-[600px] flex flex-col">
+              <motion.div key="Project Structure" variants={TAB_VARIANTS} initial="initial" animate="animate" exit="exit" className="h-[600px] flex flex-col">
                 <div className="mb-4">
                   <h1 className="text-2xl font-light tracking-tight text-white mb-2">Project Structure</h1>
                   <p className="text-sm text-slate-500">Working tree with annotations for every file and folder.</p>
@@ -583,11 +623,11 @@ IMPORTANT: Every section must reference actual file names, function names, and l
                 <div className="flex-1 min-h-0">
                   <ProjectTree analysisData={analysisData} />
                 </div>
-              </div>
+              </motion.div>
             )}
 
             {activeTab === "AI Chat" && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 h-[600px] flex flex-col">
+              <motion.div key="AI Chat" variants={TAB_VARIANTS} initial="initial" animate="animate" exit="exit" className="h-[600px] flex flex-col">
                 <h1 className="text-2xl font-light tracking-tight text-white mb-6">Ask Prometheus</h1>
 
                 <div className="flex-1 rounded-xl border border-white/5 bg-[#050505] p-6 mb-4 overflow-y-auto space-y-6">
@@ -596,8 +636,19 @@ IMPORTANT: Every section must reference actual file names, function names, and l
                       Import a repository first to begin chatting about it.
                     </div>
                   ) : chatHistory.length === 0 ? (
-                    <div className="flex h-full items-center justify-center text-slate-500 text-center px-12">
-                      <p>I&apos;m Prometheus. I&apos;ve analyzed your {analysisData.metrics.files} files. What would you like to know about this repository?</p>
+                    <div className="flex flex-col h-full items-center justify-center text-center px-8">
+                      <p className="text-slate-500 mb-6">I&apos;m Prometheus. I&apos;ve analyzed your {analysisData.metrics.files} files. What would you like to know?</p>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {SUGGESTED_PROMPTS.map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => handleAIQuery(p)}
+                            className="text-xs px-3 py-2 rounded-full border border-white/10 text-slate-400 hover:border-orange-500/40 hover:text-orange-300 hover:bg-orange-500/5 transition-all"
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   ) : (
                     chatHistory.map((msg, idx) => (
@@ -621,10 +672,18 @@ IMPORTANT: Every section must reference actual file names, function names, and l
 
                   {isChatLoading && (
                     <div className="flex gap-4">
-                      <div className="h-8 w-8 rounded bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
-                        <Loader2 size={16} className="animate-spin" />
+                      <div className="h-8 w-8 rounded bg-orange-500/20 text-orange-400 flex items-center justify-center shrink-0 flex-shrink-0">
+                        <Flame size={14} className="text-orange-400" />
                       </div>
-                      <div className="text-sm text-slate-500 mt-1 animate-pulse">Thinking...</div>
+                      <div className="flex items-center gap-1 mt-3">
+                        {[0, 1, 2].map((i) => (
+                          <div
+                            key={i}
+                            className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-bounce"
+                            style={{ animationDelay: `${i * 0.15}s` }}
+                          />
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -646,22 +705,23 @@ IMPORTANT: Every section must reference actual file names, function names, and l
                     <Sparkles size={16} />
                   </button>
                 </form>
-              </div>
+              </motion.div>
             )}
 
             {activeTab === "Impact Analyzer" && (
+              <motion.div key="Impact Analyzer" variants={TAB_VARIANTS} initial="initial" animate="animate" exit="exit">
               <ImpactAnalysis analysisData={analysisData} />
+              </motion.div>
             )}
 
             {activeTab === "Settings" && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <motion.div key="Settings" variants={TAB_VARIANTS} initial="initial" animate="animate" exit="exit">
                 <h1 className="text-2xl font-light tracking-tight text-white mb-6">Settings</h1>
                 <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6 text-sm text-slate-400">
                   Configuration options will appear here.
                 </div>
-              </div>
-            )}
-
+              </motion.div>
+            )}            </AnimatePresence>
           </div>
         </div>
       </section>
