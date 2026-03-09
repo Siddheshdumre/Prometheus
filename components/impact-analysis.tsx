@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Search, AlertTriangle, TrendingUp, FileText, Code2, Target, Zap } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Search, AlertTriangle, TrendingUp, FileText, Code2, Target, Zap, GitCommit, Users } from "lucide-react";
 
 interface ImpactAnalysisProps {
     analysisData: any;
+    repoPath?: string;
 }
 
 interface ImpactResult {
@@ -296,9 +297,30 @@ function analyzeFunctionImpact(filePath: string, functionName: string, data: any
     };
 }
 
-export function ImpactAnalysis({ analysisData }: ImpactAnalysisProps) {
+export function ImpactAnalysis({ analysisData, repoPath }: ImpactAnalysisProps) {
     const [selectedEntity, setSelectedEntity] = useState<string>("");
     const [searchQuery, setSearchQuery] = useState("");
+    const [fileGitData, setFileGitData] = useState<any>(null);
+    const [isFileGitLoading, setIsFileGitLoading] = useState(false);
+
+    // Fetch per-file git history when entity changes
+    useEffect(() => {
+        if (!selectedEntity || !repoPath) { setFileGitData(null); return; }
+        const parts = selectedEntity.split(":");
+        const filePath = parts[1];
+        if (!filePath) return;
+        setIsFileGitLoading(true);
+        setFileGitData(null);
+        fetch("/api/git/history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ repoPath, filePath }),
+        })
+            .then(r => r.json())
+            .then(d => d?.isGitRepo ? setFileGitData(d) : null)
+            .catch(() => null)
+            .finally(() => setIsFileGitLoading(false));
+    }, [selectedEntity, repoPath]);
 
     // Create searchable list of all entities (files + functions)
     const searchableEntities = useMemo(() => {
@@ -335,6 +357,21 @@ export function ImpactAnalysis({ analysisData }: ImpactAnalysisProps) {
             entity.path.toLowerCase().includes(searchQuery.toLowerCase())
         ).slice(0, 20);
     }, [analysisData, searchQuery]);
+
+    // Pre-ranked suggestions: top 5 files by number of importers
+    const suggestions = useMemo(() => {
+        if (!analysisData?.files) return [];
+        const { reverseIndex } = buildDependencyIndex(analysisData);
+        return [...analysisData.files]
+            .sort((a: any, b: any) => (reverseIndex.get(b.path)?.size ?? 0) - (reverseIndex.get(a.path)?.size ?? 0))
+            .slice(0, 5)
+            .map((file: any) => ({
+                id: `file:${file.path}`,
+                name: file.path.split('/').pop() || file.path,
+                path: file.path,
+                importerCount: reverseIndex.get(file.path)?.size ?? 0,
+            }));
+    }, [analysisData]);
 
     // Calculate impact analysis for selected entity
     const impactResult = useMemo(() => {
@@ -381,57 +418,96 @@ export function ImpactAnalysis({ analysisData }: ImpactAnalysisProps) {
                     </h2>
                     
                     <div className="space-y-4">
-                        <div className="relative">
-                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                            <input
-                                type="text"
-                                placeholder="Search files and functions..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full bg-white/5 border border-white/10 rounded-lg py-2 pl-10 pr-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50"
-                            />
-                        </div>
-
-                        {searchQuery && (
-                            <div className="max-h-48 overflow-y-auto rounded-lg border border-white/5 bg-white/5">
-                                {searchableEntities.map((entity) => (
-                                    <button
-                                        key={entity.id}
-                                        onClick={() => {
-                                            setSelectedEntity(entity.id);
-                                            setSearchQuery("");
-                                        }}
-                                        className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-white/5 transition-colors"
-                                    >
-                                        {entity.type === 'file' ? (
-                                            <FileText size={14} className="text-green-400" />
-                                        ) : (
-                                            <Code2 size={14} className="text-blue-400" />
-                                        )}
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-sm text-white">{entity.name}</div>
-                                            <div className="text-xs text-slate-500">{entity.path}</div>
-                                        </div>
-                                    </button>
-                                ))}
-                                {searchableEntities.length === 0 && (
-                                    <div className="px-3 py-4 text-center text-slate-500 text-sm">
-                                        No entities found
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
+                        {/* Active selection banner */}
                         {selectedEntity && impactResult && (
-                            <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg p-3">
+                            <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg p-3 flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-cyan-400">
                                     {impactResult.entity.type === 'file' ? <FileText size={14} /> : <Code2 size={14} />}
-                                    <span className="font-medium">Analyzing: {impactResult.entity.name}</span>
+                                    <span className="font-medium text-sm">Analyzing: {impactResult.entity.name}</span>
                                     {impactResult.entity.type === 'function' && (
                                         <span className="text-xs text-slate-400">in {impactResult.entity.path}</span>
                                     )}
                                 </div>
+                                <button
+                                    onClick={() => { setSelectedEntity(""); setSearchQuery(""); }}
+                                    className="text-xs text-slate-500 hover:text-slate-300 transition-colors px-2 py-0.5 rounded border border-white/10 hover:border-white/20"
+                                >
+                                    Change
+                                </button>
                             </div>
+                        )}
+
+                        {/* Suggestions or search when no entity selected */}
+                        {!selectedEntity && (
+                            <>
+                                {/* Pre-populated suggestions */}
+                                {!searchQuery && (
+                                    <div className="rounded-lg border border-white/5 overflow-hidden">
+                                        <div className="px-3 py-2 bg-white/[0.02] border-b border-white/5">
+                                            <span className="text-xs text-slate-500 uppercase tracking-wider">Top files by dependency impact</span>
+                                        </div>
+                                        {suggestions.map((entity) => (
+                                            <button
+                                                key={entity.id}
+                                                onClick={() => setSelectedEntity(entity.id)}
+                                                className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/5 transition-colors border-b border-white/[0.03] last:border-0"
+                                            >
+                                                <FileText size={14} className="text-green-400 shrink-0" />
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-sm text-white truncate">{entity.name}</div>
+                                                    <div className="text-xs text-slate-500 truncate">{entity.path}</div>
+                                                </div>
+                                                {entity.importerCount > 0 && (
+                                                    <span className="text-xs text-slate-600 shrink-0">{entity.importerCount} dep{entity.importerCount !== 1 ? 's' : ''}</span>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Search box */}
+                                <div className="relative">
+                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search all files and functions..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full bg-white/5 border border-white/10 rounded-lg py-2 pl-10 pr-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50"
+                                    />
+                                </div>
+
+                                {/* Search results */}
+                                {searchQuery && (
+                                    <div className="max-h-48 overflow-y-auto rounded-lg border border-white/5 bg-white/[0.02]">
+                                        {searchableEntities.map((entity) => (
+                                            <button
+                                                key={entity.id}
+                                                onClick={() => {
+                                                    setSelectedEntity(entity.id);
+                                                    setSearchQuery("");
+                                                }}
+                                                className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/5 transition-colors border-b border-white/[0.03] last:border-0"
+                                            >
+                                                {entity.type === 'file' ? (
+                                                    <FileText size={14} className="text-green-400 shrink-0" />
+                                                ) : (
+                                                    <Code2 size={14} className="text-blue-400 shrink-0" />
+                                                )}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-sm text-white truncate">{entity.name}</div>
+                                                    <div className="text-xs text-slate-500 truncate">{entity.path}</div>
+                                                </div>
+                                            </button>
+                                        ))}
+                                        {searchableEntities.length === 0 && (
+                                            <div className="px-3 py-4 text-center text-slate-500 text-sm">
+                                                No entities found
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
@@ -507,6 +583,70 @@ export function ImpactAnalysis({ analysisData }: ImpactAnalysisProps) {
                                         </span>
                                     ))}
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Commit History */}
+                        {(isFileGitLoading || fileGitData) && (
+                            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
+                                <h3 className="text-sm font-medium text-slate-400 mb-4 uppercase tracking-wider flex items-center gap-2">
+                                    <GitCommit size={13} className="text-orange-400" />
+                                    Commit History
+                                </h3>
+                                {isFileGitLoading ? (
+                                    <div className="animate-pulse space-y-2">
+                                        <div className="h-3 bg-white/5 rounded w-1/4" />
+                                        <div className="h-3 bg-white/5 rounded w-1/2" />
+                                    </div>
+                                ) : fileGitData ? (
+                                    <div className="space-y-4">
+                                        {/* Churn stat */}
+                                        <div className="flex items-baseline gap-3">
+                                            <span className="text-2xl font-light text-slate-200">{fileGitData.fileCommits}</span>
+                                            <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                                                fileGitData.fileCommits >= 20
+                                                    ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                                                    : fileGitData.fileCommits >= 5
+                                                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                                                    : 'border-green-500/30 bg-green-500/10 text-green-300'
+                                            }`}>
+                                                {fileGitData.fileCommits >= 20 ? 'high churn' : fileGitData.fileCommits >= 5 ? 'medium churn' : 'stable'}
+                                            </span>
+                                            <span className="text-xs text-slate-600">commits to this file</span>
+                                        </div>
+
+                                        {/* Top contributors bar chart */}
+                                        {fileGitData.authors?.length > 0 && (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-1 text-xs text-slate-600 mb-1">
+                                                    <Users size={11} />
+                                                    <span className="uppercase tracking-wider">Top contributors</span>
+                                                </div>
+                                                {fileGitData.authors.map((a: any, i: number) => (
+                                                    <div key={i} className="flex items-center gap-2">
+                                                        <span className="text-xs text-slate-400 w-28 truncate">{a.name}</span>
+                                                        <div className="flex-1 h-1 rounded bg-white/5 overflow-hidden">
+                                                            <div
+                                                                className="h-full bg-orange-400/50 rounded"
+                                                                style={{ width: `${(a.count / fileGitData.authors[0].count) * 100}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-xs text-slate-600 w-6 text-right">{a.count}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* Last commit */}
+                                        {fileGitData.lastCommit && (
+                                            <div className="text-xs text-slate-500 pt-3 border-t border-white/5">
+                                                <span className="text-slate-400">Last commit:</span>{" "}
+                                                &ldquo;{fileGitData.lastCommit.message}&rdquo;
+                                                <span className="text-slate-600"> — {fileGitData.lastCommit.author} · {fileGitData.lastCommit.timeAgo}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : null}
                             </div>
                         )}
 

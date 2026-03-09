@@ -10,6 +10,7 @@ import { ImpactAnalysis } from "./impact-analysis";
 import { ArchitectureOverview } from "./architecture-overview";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ProjectTree } from "./project-tree";
+import { GitHistory } from "./git-history";
 import { PrometheusIllustration } from "./prometheus-illustration";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 
@@ -561,6 +562,8 @@ IMPORTANT: Every section must reference actual file names, function names, and l
                       })}
                     </div>
 
+                    <GitHistory repoPath={repoPathInput} />
+
                     <div className="flex items-center justify-between mb-4">
                       <h2 className="text-lg font-medium text-slate-200">Codebase Overview</h2>
                       {codebaseExplanation && !isExplanationLoading && (
@@ -782,7 +785,7 @@ IMPORTANT: Every section must reference actual file names, function names, and l
 
             {activeTab === "Impact Analyzer" && (
               <motion.div key="Impact Analyzer" variants={TAB_VARIANTS} initial="initial" animate="animate" exit="exit">
-              <ImpactAnalysis analysisData={analysisData} />
+              <ImpactAnalysis analysisData={analysisData} repoPath={repoPathInput} />
               </motion.div>
             )}
 
