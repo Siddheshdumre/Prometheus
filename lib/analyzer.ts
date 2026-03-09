@@ -80,6 +80,7 @@ export interface FileNode {
     exports: string[];
     complexity: number;
     size: number;
+    summary?: string;
 }
 
 export interface FunctionInfo {
@@ -288,6 +289,267 @@ class FunctionAnalyzer {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// FILE SUMMARY GENERATOR
+// ═══════════════════════════════════════════════════════════════════════════
+
+function generateFileSummary(filePath: string, functions: FunctionInfo[], classes: string[], exports: string[], imports: ResolvedImport[]): string {
+    const name = path.basename(filePath);
+    const dir = path.dirname(filePath).split('/').filter(Boolean);
+    const ext = path.extname(filePath);
+    const lineCount = functions.reduce((sum, f) => sum + (f.endLine - f.startLine), 0);
+    const isLargeFile = lineCount > 500;
+    const isCoreFile = lineCount > 1000;
+    
+    // Extract context from directory names
+    const parentDir = dir[dir.length - 1] || '';
+    const grandParentDir = dir[dir.length - 2] || '';
+    
+    // Analyze function names for clues
+    const functionNames = functions.map(f => f.name.toLowerCase());
+    const hasRouteHandlers = functionNames.some(n => /^(get|post|put|delete|patch|head|options)$/i.test(n));
+    const hasAuthFunctions = functionNames.some(n => /auth|login|logout|verify|token/i.test(n));
+    const hasValidation = functionNames.some(n => /valid|check|verify|sanitize/i.test(n));
+    const hasCRUD = functionNames.some(n => /create|read|update|delete|fetch|save|remove/i.test(n));
+    
+    // Component/Page detection with better context
+    if (name.match(/^(layout|page|error|loading|not-found|template)\.(tsx?|jsx?)$/i)) {
+        const type = name.split('.')[0];
+        if (type === 'layout') return 'Root layout component';
+        if (type === 'page') {
+            // Check parent directory for context
+            if (parentDir === 'dashboard' || parentDir === 'analytics') return 'Analytics dashboard';
+            if (parentDir === 'admin') return 'Admin panel interface';
+            if (parentDir === 'settings') return 'Settings page';
+            if (parentDir === 'profile') return 'User profile page';
+            return 'Main application code';
+        }
+        if (type === 'error') return 'Error boundary handler';
+        if (type === 'loading') return 'Loading state UI';
+        return 'Route component';
+    }
+    
+    // Module files (Angular, NestJS, etc.)
+    if (name.match(/\.module\.(ts|js)$/i)) {
+        if (name.includes('app.module')) return 'Root module - declares all components';
+        if (name.includes('routing')) return 'Routing configuration';
+        return `${parentDir} module configuration`;
+    }
+    
+    // Config files with better descriptions
+    if (name.match(/^(config|configuration|settings|constants|env)\./i)) {
+        if (name.includes('api') || name.includes('http')) return 'API configuration';
+        if (name.includes('db') || name.includes('database')) return 'Database configuration';
+        return 'Application settings';
+    }
+    if (name === 'tsconfig.json') return 'TypeScript compiler config';
+    if (name === 'package.json') return 'Dependencies manifest';
+    if (name.match(/^(tailwind|postcss)\.config/i)) return 'Styling configuration';
+    if (name.match(/^(next|vite|webpack)\.config/i)) return 'Build tool setup';
+    
+    // Routes/API with context awareness
+    if (dir.includes('api') || dir.includes('routes')) {
+        if (name === 'route.ts' || name === 'route.js') {
+            if (parentDir === 'chat') return 'AI chat endpoint';
+            if (parentDir === 'analyze') return 'Repository analysis endpoint';
+            if (parentDir === 'content') return 'File content reader';
+            if (parentDir === 'auth') return 'Authentication API';
+            return 'API endpoint handler';
+        }
+        if (hasRouteHandlers) return 'HTTP request handlers';
+        if (hasCRUD) return `${parentDir} CRUD operations`;
+        return 'API route logic';
+    }
+    
+    // Auth/Guards with specificity
+    if (name.match(/(auth|guard|middleware|protect)/i)) {
+        if (name.includes('guard')) return 'Route guard for authentication';
+        if (name.includes('middleware')) return 'Auth middleware';
+        if (hasAuthFunctions) return 'Authentication service';
+        return 'Security logic';
+    }
+    
+    // Types/Interfaces
+    if (name.match(/^(types|interfaces|models|schemas)\./i) || name.includes('.types.') || name.includes('.d.ts')) {
+        if (parentDir) return `${parentDir} type definitions`;
+        return 'Type declarations';
+    }
+    
+    // Tests
+    if (name.match(/\.(test|spec)\.(tsx?|jsx?)$/)) {
+        const testTarget = name.replace(/\.(test|spec)\.(tsx?|jsx?)$/, '');
+        return `Tests for ${testTarget}`;
+    }
+    
+    // Utils/Helpers with specific roles
+    if (dir.includes('utils') || dir.includes('helpers') || dir.includes('lib')) {
+        if (name.includes('date') || name.includes('time')) return 'Date/time helpers';
+        if (name.includes('format')) return 'Data formatting utils';
+        if (name.includes('validate') || name.includes('validator')) return 'Input validation';
+        if (name.includes('api') || name.includes('http') || name.includes('fetch')) return 'HTTP client utilities';
+        if (name.includes('string')) return 'String manipulation';
+        if (name.includes('array')) return 'Array utilities';
+        if (name.includes('analyzer') || name.includes('parser')) {
+            const suffix = isCoreFile ? ` (${lineCount} lines - core engine)` : isLargeFile ? ` (${lineCount} lines)` : '';
+            return `Code analysis engine${suffix}`;
+        }
+        if (exports.length > 8) return 'Shared utility collection';
+        return 'Helper functions';
+    }
+    
+    // Components with better context
+    if (dir.includes('components') || ext.match(/\.(tsx|jsx)$/)) {
+        // Specific component detection with context
+        if (name.match(/workspace/i)) return 'Main workspace container';
+        if (name.match(/dashboard/i)) return 'Dashboard view';
+        if (name.match(/sidebar/i)) return 'Navigation sidebar';
+        if (name.match(/header/i)) return 'Page header';
+        if (name.match(/footer/i)) return 'Page footer';
+        if (name.match(/navbar|navigation/i)) return 'Navigation bar';
+        if (name.match(/menu/i)) return 'Menu component';
+        
+        if (name.match(/button|btn/i)) return 'Button component';
+        if (name.match(/modal|dialog/i)) return 'Modal dialog';
+        if (name.match(/form/i)) return 'Form component';
+        if (name.match(/input|field/i)) return 'Input field';
+        if (name.match(/table|grid/i)) return 'Data table';
+        if (name.match(/list/i)) return 'List display';
+        if (name.match(/card/i)) return 'Card component';
+        if (name.match(/viewer/i)) {
+            if (parentDir || grandParentDir) return `${parentDir || grandParentDir} viewer`;
+            return 'Content viewer';
+        }
+        if (name.match(/editor/i)) return 'Content editor';
+        if (name.match(/tree|explorer/i)) return 'Tree explorer';
+        if (name.match(/palette/i)) return 'Command palette';
+        if (name.match(/chart|graph/i)) return 'Data visualization';
+        if (name.match(/tooltip/i)) return 'Tooltip overlay';
+        if (name.match(/dropdown|select/i)) return 'Dropdown menu';
+        if (name.match(/tabs?/i)) return 'Tab navigation';
+        if (name.match(/accordion/i)) return 'Accordion panel';
+        if (name.match(/badge|tag/i)) return 'Badge component';
+        if (name.match(/avatar/i)) return 'Avatar display';
+        if (name.match(/icon/i)) return 'Icon component';
+        if (name.match(/spinner|loader/i)) return 'Loading indicator';
+        if (name.match(/alert|toast|notification/i)) return 'Notification UI';
+        
+        // Context/Providers
+        if (name.match(/(context|provider)/i)) return 'React context provider';
+        
+        // Hooks
+        if (name.match(/^use[A-Z]/)) {
+            const hookName = name.replace(/^use/, '').replace(/\.(tsx?|jsx?)$/, '');
+            return `Custom ${hookName.toLowerCase()} hook`;
+        }
+        
+        // Generic with parent context
+        if (parentDir && parentDir !== 'components') return `${parentDir} UI component`;
+        return 'UI component';
+    }
+    
+    // Services with business logic hints
+    if (dir.includes('services') || dir.includes('service')) {
+        if (name.includes('auth')) return 'Authentication service';
+        if (name.includes('api') || name.includes('http')) return 'API client service';
+        if (name.includes('storage') || name.includes('cache')) return 'Data persistence';
+        if (name.includes('socket') || name.includes('websocket')) return 'WebSocket service';
+        if (name.includes('notification')) return 'Notification service';
+        if (hasCRUD) return `${parentDir} data service`;
+        return 'Business logic layer';
+    }
+    
+    // Stores/State
+    if (dir.includes('store') || dir.includes('state') || name.includes('store') || name.includes('slice')) {
+        if (parentDir) return `${parentDir} state store`;
+        return 'State management';
+    }
+    
+    // Styles
+    if (ext.match(/\.(css|scss|sass|less|styl)$/)) {
+        if (name === 'globals.css' || name === 'global.css') return 'Global stylesheet';
+        if (name.includes('theme')) return 'Theme variables';
+        if (name.includes('variables')) return 'Style variables';
+        return 'Component styles';
+    }
+    
+    // Database/Models
+    if (dir.includes('models') || dir.includes('entities') || dir.includes('schema')) {
+        if (parentDir) return `${parentDir} data model`;
+        return 'Database schema';
+    }
+    
+    // Python specific with Django context
+    if (ext === '.py') {
+        if (name === '__init__.py') return 'Package initializer';
+        if (name === 'manage.py') return 'Django CLI tool';
+        if (name === 'settings.py') return 'Django configuration';
+        if (name === 'urls.py') return 'URL routing map';
+        if (name === 'views.py') {
+            if (hasCRUD) return 'View handlers with CRUD';
+            return 'Request handlers';
+        }
+        if (name === 'models.py') return 'ORM model definitions';
+        if (name === 'forms.py') return 'Form classes';
+        if (name === 'admin.py') return 'Django admin config';
+        if (name === 'serializers.py') return 'API serializers';
+        if (name === 'tasks.py') return 'Background tasks';
+        if (name === 'celery.py') return 'Celery configuration';
+        if (name.includes('test_')) return `Unit tests for ${name.replace('test_', '').replace('.py', '')}`;
+    }
+    
+    // Java specific with Spring context
+    if (ext === '.java') {
+        if (classes.some(c => c.endsWith('Controller'))) return `${parentDir} REST controller`;
+        if (classes.some(c => c.endsWith('Service'))) return `${parentDir} service layer`;
+        if (classes.some(c => c.endsWith('Repository'))) return `${parentDir} data repository`;
+        if (classes.some(c => c.endsWith('Entity'))) return `${parentDir} database entity`;
+        if (classes.some(c => c.endsWith('DTO'))) return 'Data transfer object';
+        if (classes.some(c => c.endsWith('Config'))) return 'Spring configuration';
+        if (name.includes('Application')) return 'Spring Boot entry point';
+    }
+    
+    // Markdown/Documentation
+    if (ext === '.md') {
+        if (name === 'README.md') return 'Project documentation';
+        if (name.includes('CHANGELOG')) return 'Version history';
+        if (name.includes('CONTRIBUTING')) return 'Contribution guide';
+        if (name.includes('LICENSE')) return 'License terms';
+        return 'Documentation';
+    }
+    
+    // Based on exports/functions with size context
+    if (isCoreFile) {
+        return `${parentDir || 'Core'} module (${lineCount} lines - major component)`;
+    }
+    if (isLargeFile) {
+        if (exports.length > 10) return `${parentDir} utilities (${lineCount} lines)`;
+        if (functions.length > 15) return `${parentDir} logic (${lineCount} lines)`;
+    }
+    if (exports.length > 8) return 'Shared utilities';
+    if (classes.length > 2) return `${classes.length} class definitions`;
+    if (functions.length > 10) return 'Function library';
+    
+    // Fallback based on extension
+    if (ext === '.json') {
+        if (name.includes('lock')) return 'Dependency lock file';
+        return 'JSON configuration';
+    }
+    if (ext.match(/\.(yml|yaml)$/)) return 'YAML config';
+    if (ext === '.sql') return 'SQL queries';
+    if (ext === '.sh') return 'Shell script';
+    if (ext === '.dockerfile' || name === 'Dockerfile') return 'Docker image config';
+    if (ext === '.env') return 'Environment variables';
+    if (ext === '.gitignore') return 'Git ignore rules';
+    
+    // Generic fallback with context
+    if (functions.length > 0 && classes.length > 0) return `${parentDir || 'Mixed'} module`;
+    if (functions.length > 0) return `${parentDir || 'Function'} module`;
+    if (classes.length > 0) return `${parentDir || 'Class'} definitions`;
+    if (parentDir) return `${parentDir} file`;
+    
+    return 'Source file';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MULTI-LANGUAGE SUPPORT
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -433,7 +695,8 @@ class PythonFileAnalyzer {
         }
 
         const complexity = Math.max(1, functions.reduce((s, f) => s + f.complexity, 0));
-        return { path: relativePath, functions, classes, imports, exports, complexity, size: content.length };
+        const summary = generateFileSummary(relativePath, functions, classes, exports, imports);
+        return { path: relativePath, functions, classes, imports, exports, complexity, size: content.length, summary };
     }
 
     private calcComplexity(lines: string[]): number {
@@ -529,7 +792,8 @@ class JavaFileAnalyzer {
         }
 
         const complexity = Math.max(1, functions.reduce((s, f) => s + f.complexity, 0));
-        return { path: relativePath, functions, classes, imports, exports: classes, complexity, size: content.length };
+        const summary = generateFileSummary(relativePath, functions, classes, classes, imports);
+        return { path: relativePath, functions, classes, imports, exports: classes, complexity, size: content.length, summary };
     }
 
     private calcComplexity(lines: string[], start: number): number {
@@ -585,10 +849,11 @@ class GenericFileAnalyzer {
         }
 
         const complexity = Math.max(1, functions.length);
+        const summary = generateFileSummary(relativePath, functions, classes, functions.filter(f => f.isExported).map(f => f.name), imports);
         return {
             path: relativePath, functions, classes, imports,
             exports: functions.filter(f => f.isExported).map(f => f.name),
-            complexity, size: content.length,
+            complexity, size: content.length, summary,
         };
     }
 }
@@ -1220,8 +1485,9 @@ export async function analyzeRepository(repoPath: string): Promise<AnalysisResul
             const exportNames = Array.from(sourceFile.getExportedDeclarations().keys());
             const fileSize = sourceFile.getFullText().length;
             const fileComplexity = functions.reduce((s, f) => s + f.complexity, 0);
+            const summary = generateFileSummary(filePath, functions, classes, exportNames, imports);
 
-            const node: FileNode = { path: filePath, functions, classes, imports, exports: exportNames, complexity: fileComplexity, size: fileSize };
+            const node: FileNode = { path: filePath, functions, classes, imports, exports: exportNames, complexity: fileComplexity, size: fileSize, summary };
             tsFileNodes.push(node);
             fileNodes.push(node);
 

@@ -9,6 +9,7 @@ import { ImpactAnalysis } from "./impact-analysis";
 import { ArchitectureOverview } from "./architecture-overview";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ProjectTree } from "./project-tree";
+import { PrometheusIllustration } from "./prometheus-illustration";
 
 type NavItem = "Dashboard" | "Architecture" | "Project Structure" | "AI Chat" | "Impact Analyzer" | "File Explorer" | "Settings";
 
@@ -373,36 +374,70 @@ IMPORTANT: Every section must reference actual file names, function names, and l
           <div className="mx-auto max-w-5xl">
             {activeTab === "Dashboard" && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-                <h1 className="text-2xl font-light tracking-tight text-white mb-8">Repository Overview</h1>
+                {analysisData && (
+                  <h1 className="text-2xl font-light tracking-tight text-white mb-8">Repository Overview</h1>
+                )}
 
                 {!analysisData ? (
-                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-8 max-w-xl">
-                    <h2 className="text-lg font-medium text-slate-200 mb-2">Import Repository</h2>
-                    <p className="text-sm text-slate-400 mb-6">Enter a GitHub URL or the absolute path to a local codebase to begin analysis.</p>
+                  <div className="flex items-center gap-8 min-h-[65vh]">
+                    {/* Left: text + form */}
+                    <div className="w-[400px] flex-shrink-0">
+                      <p className="text-xs font-semibold tracking-[0.2em] uppercase text-cyan-500/70 mb-3">Codebase Intelligence</p>
+                      <h2 className="text-4xl font-bold tracking-tight text-white leading-tight mb-4">
+                        Understand any<br />codebase, instantly.
+                      </h2>
+                      <p className="text-sm text-slate-400 leading-relaxed mb-8">
+                        Point Prometheus at any GitHub repo or local folder. Get instant architecture maps, dependency graphs, and an AI that actually knows your code.
+                      </p>
 
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-1.5 block">Repository URL / Path</label>
-                        <input
-                          type="text"
-                          value={repoPathInput}
-                          onChange={(e) => setRepoPathInput(e.target.value)}
-                          placeholder="e.g. https://github.com/lucide-icons/lucide or C:\path"
-                          className="w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
-                        />
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-1.5 block">Repository URL or Local Path</label>
+                          <input
+                            type="text"
+                            value={repoPathInput}
+                            onChange={(e) => setRepoPathInput(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+                            placeholder="https://github.com/user/repo  or  C:\path\to\project"
+                            className="w-full rounded-lg border border-white/10 bg-black/50 px-4 py-3 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all"
+                          />
+                        </div>
+                        <button
+                          onClick={handleAnalyze}
+                          disabled={isAnalyzing || !repoPathInput}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-500/25 bg-cyan-500/15 px-4 py-3 text-sm font-medium text-cyan-400 transition-all hover:bg-cyan-500/25 hover:border-cyan-500/45 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {isAnalyzing ? (
+                            <><Loader2 size={16} className="animate-spin" /> Analyzing...</>
+                          ) : (
+                            <><Sparkles size={16} /> Analyze Repository</>
+                          )}
+                        </button>
                       </div>
-                      <button
-                        onClick={handleAnalyze}
-                        disabled={isAnalyzing || !repoPathInput}
-                        className="flex w-full items-center justify-center gap-2 rounded-md bg-cyan-500/20 px-4 py-2 text-sm font-medium text-cyan-400 transition-colors hover:bg-cyan-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isAnalyzing ? (
-                          <><Loader2 size={16} className="animate-spin" /> Analyzing...</>
-                        ) : (
-                          <><Sparkles size={16} /> Analyze Repository</>
-                        )}
-                      </button>
+
+                      {/* Quick-start suggestions */}
+                      <div className="mt-8">
+                        <p className="text-xs text-slate-600 mb-3">Try with a popular repo:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {["facebook/react", "vercel/next.js", "tailwindlabs/tailwindcss"].map((repo) => (
+                            <button
+                              key={repo}
+                              onClick={() => setRepoPathInput(`https://github.com/${repo}`)}
+                              className="text-xs px-3 py-1.5 rounded-full border border-white/[0.08] text-slate-500 hover:border-cyan-500/35 hover:text-cyan-400 transition-all"
+                            >
+                              {repo}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Right: Prometheus illustration — hidden while analyzing */}
+                    {!isAnalyzing && (
+                      <div className="hidden lg:block flex-1 self-stretch min-h-[340px]">
+                        <PrometheusIllustration className="w-full h-full" />
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>

@@ -11,6 +11,7 @@ interface FileNode {
   exports: string[];
   complexity: number;
   size: number;
+  summary?: string;
 }
 
 interface ArchitectureLayer {
@@ -52,6 +53,12 @@ function getFileIcon(name: string) {
 
 function generateAnnotation(file: FileNode | undefined, dirFiles: FileNode[]): string {
   if (file) {
+    // Use AI-generated summary if available
+    if (file.summary) {
+      return file.summary;
+    }
+    
+    // Fallback to technical details
     const parts: string[] = [];
     if (file.functions.length > 0) {
       const exported = file.functions.filter(f => f.isExported);
