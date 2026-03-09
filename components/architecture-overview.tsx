@@ -13,10 +13,10 @@ interface ArchitectureOverviewProps {
 
 // ─── Complexity Treemap ───────────────────────────────────────────────────────
 
-function complexityColor(cx: number, alpha = '20') {
-    if (cx >= 20) return { bg: `#ef4444${alpha}`, border: '#ef444450', text: '#fca5a5' };
-    if (cx >= 10) return { bg: `#f59e0b${alpha}`, border: '#f59e0b50', text: '#fcd34d' };
-    if (cx >= 5)  return { bg: `#3b82f6${alpha}`, border: '#3b82f650', text: '#93c5fd' };
+function complexityColor(score: number, alpha = '20') {
+    if (score >= 20) return { bg: `#ef4444${alpha}`, border: '#ef444450', text: '#fca5a5' };
+    if (score >= 10) return { bg: `#f59e0b${alpha}`, border: '#f59e0b50', text: '#fcd34d' };
+    if (score >= 5)  return { bg: `#3b82f6${alpha}`, border: '#3b82f650', text: '#93c5fd' };
     return { bg: `#10b981${alpha}`, border: '#10b98150', text: '#6ee7b7' };
 }
 
@@ -53,8 +53,8 @@ function ComplexityTreemap({ files }: { files: any[] }) {
 
             {groups.map(([dir, dirFiles]) => {
                 const dirComplexity = dirFiles.reduce((s: number, f: any) => s + (f.complexity ?? 0), 0);
-                const avgCx = dirFiles.length > 0 ? dirComplexity / dirFiles.length : 0;
-                const c = complexityColor(avgCx);
+                const avgScore = dirFiles.length > 0 ? dirComplexity / dirFiles.length : 0;
+                const c = complexityColor(avgScore);
                 return (
                     <div key={dir}>
                         {/* Directory header */}
@@ -63,15 +63,15 @@ function ComplexityTreemap({ files }: { files: any[] }) {
                             <span className="text-xs font-mono font-medium text-slate-300">{dir}/</span>
                             <span className="text-xs text-slate-600">{dirFiles.length} file{dirFiles.length !== 1 ? 's' : ''}</span>
                             <div className="flex-1 h-px bg-white/5 mx-2" />
-                            <span className="text-xs" style={{ color: c.text }}>avg cx {avgCx.toFixed(1)}</span>
+                            <span className="text-xs" style={{ color: c.text }}>avg complexity {avgScore.toFixed(1)}</span>
                         </div>
 
                         {/* File chips */}
                         <div className="flex flex-wrap gap-1.5 pl-4">
                             {dirFiles.map((file: any) => {
                                 const name = file.path.split('/').pop() || file.path;
-                                const cx = file.complexity ?? 0;
-                                const fc = complexityColor(cx);
+                                const score = file.complexity ?? 0;
+                                const fc = complexityColor(score);
                                 const isHov = hoveredFile === file.path;
                                 return (
                                     <div
@@ -92,7 +92,7 @@ function ComplexityTreemap({ files }: { files: any[] }) {
                                             <div className="absolute bottom-full left-0 mb-2 z-20 bg-[#0d0d0d] border border-white/10 rounded-xl p-3 text-xs whitespace-nowrap shadow-2xl pointer-events-none">
                                                 <div className="text-white font-medium mb-2 font-mono">{file.path}</div>
                                                 <div className="space-y-1 text-slate-400">
-                                                    <div>Complexity: <span style={{ color: fc.text }} className="font-medium">{cx}</span></div>
+                                                    <div>Complexity: <span style={{ color: fc.text }} className="font-medium">{score}</span></div>
                                                     {file.functions?.length > 0 && <div>Functions: <span className="text-slate-300">{file.functions.length}</span></div>}
                                                     {file.exports?.length > 0 && <div>Exports: <span className="text-slate-300">{file.exports.length}</span></div>}
                                                     {file.imports?.length > 0 && <div>Imports: <span className="text-slate-300">{file.imports.length}</span></div>}
@@ -147,8 +147,8 @@ function LayerStackDiagram({ layers, files }: { layers: any[]; files: any[] }) {
             {layers.map((layer: any, i: number) => {
                 const palette = LAYER_PALETTE[i % LAYER_PALETTE.length];
                 const isOpen = openLayer === layer.name;
-                const cxValues = layer.files.map((f: string) => fileComplexityMap[f] ?? 0);
-                const avgCx = cxValues.length > 0 ? cxValues.reduce((a: number, b: number) => a + b, 0) / cxValues.length : 0;
+                const scores = layer.files.map((f: string) => fileComplexityMap[f] ?? 0);
+                const avgScore = scores.length > 0 ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length : 0;
                 const nextLayer = layers[i + 1];
                 const crossCalls = nextLayer ? getCrossLayerCalls(layer.files, nextLayer.files) : 0;
 
@@ -168,7 +168,7 @@ function LayerStackDiagram({ layers, files }: { layers: any[]; files: any[] }) {
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <span className="text-xs text-slate-500">avg cx {avgCx.toFixed(1)}</span>
+                                    <span className="text-xs text-slate-500">avg complexity {avgScore.toFixed(1)}</span>
                                     {isOpen ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
                                 </div>
                             </div>
@@ -178,9 +178,9 @@ function LayerStackDiagram({ layers, files }: { layers: any[]; files: any[] }) {
                             {/* Complexity mini-bar */}
                             <div className="flex gap-0.5 h-1.5 rounded-full overflow-hidden bg-white/5 pl-6">
                                 {layer.files.slice(0, 24).map((f: string, fi: number) => {
-                                    const cx = fileComplexityMap[f] ?? 0;
-                                    const col = cx >= 20 ? '#ef4444' : cx >= 10 ? '#f59e0b' : cx >= 5 ? '#3b82f6' : '#10b981';
-                                    return <div key={fi} style={{ flex: 1, background: col }} title={`${f.split('/').pop()}: cx ${cx}`} />;
+                                    const score = fileComplexityMap[f] ?? 0;
+                                    const col = score >= 20 ? '#ef4444' : score >= 10 ? '#f59e0b' : score >= 5 ? '#3b82f6' : '#10b981';
+                                    return <div key={fi} style={{ flex: 1, background: col }} title={`${f.split('/').pop()}: complexity ${score}`} />;
                                 })}
                             </div>
 
@@ -188,8 +188,8 @@ function LayerStackDiagram({ layers, files }: { layers: any[]; files: any[] }) {
                             {isOpen && (
                                 <div className="mt-4 pl-6 flex flex-wrap gap-1.5">
                                     {layer.files.map((f: string, fi: number) => {
-                                        const cx = fileComplexityMap[f] ?? 0;
-                                        const fc = complexityColor(cx);
+                                        const score = fileComplexityMap[f] ?? 0;
+                                        const fc = complexityColor(score);
                                         return (
                                             <span
                                                 key={fi}
@@ -519,7 +519,7 @@ export function ArchitectureOverview({ analysisData }: ArchitectureOverviewProps
                     { label: 'Layers',       value: arch?.layers?.length ?? 0,         sub: 'architectural tiers' },
                     { label: 'Files',        value: files.length,                      sub: 'total source files' },
                     { label: 'Functions',    value: totalFunctions,                    sub: 'across all files' },
-                    { label: 'Avg Cx',       value: avgComplexity,                     sub: `${highComplexityCount} high complexity` },
+                    { label: 'Avg Complexity', value: avgComplexity, sub: `${highComplexityCount} high complexity` },
                 ].map((stat, i) => (
                     <div key={i} className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
                         <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">{stat.label}</div>

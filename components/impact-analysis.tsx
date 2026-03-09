@@ -532,7 +532,7 @@ export function ImpactAnalysis({ analysisData }: ImpactAnalysisProps) {
                                             </div>
                                             <div className="flex items-center gap-2 shrink-0">
                                                 {impact.complexity != null && impact.complexity > 0 && (
-                                                    <span className="text-xs text-slate-600">cx {impact.complexity}</span>
+                                                    <span className="text-xs text-slate-600">complexity {impact.complexity}</span>
                                                 )}
                                                 <span className={`px-2 py-1 text-xs rounded ${
                                                     impact.impactType === 'breaking' ? 'bg-red-500/20 text-red-400' :

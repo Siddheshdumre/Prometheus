@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { BrainCircuit, FolderTree, Network, LayoutDashboard, SearchCode, Settings, Sparkles, FolderCode, Loader2, Copy, Check, RefreshCw, Flame, FileCode2, Braces, Layers, GitBranch, CheckCircle2, Zap, FileDown } from "lucide-react";
+import { BrainCircuit, FolderTree, Network, LayoutDashboard, SearchCode, Settings, Sparkles, FolderCode, Loader2, Copy, Check, RefreshCw, FileCode2, Braces, Layers, GitBranch, Zap, FileDown, Terminal } from "lucide-react";
 import { exportReportAsPdf } from "../lib/pdf-export";
 import { FileTree } from "./file-tree";
 import { CodeViewer } from "./code-viewer";
@@ -30,7 +30,6 @@ const METRIC_CARDS = [
   { key: "functions",     label: "Functions",   icon: Braces,       color: "purple",  border: "border-purple-500/20",  bg: "bg-purple-500/[0.07]",  iconColor: "text-purple-400",  topBar: "from-purple-500/40" },
   { key: "classes",       label: "Classes",     icon: Layers,       color: "amber",   border: "border-amber-500/20",   bg: "bg-amber-500/[0.07]",   iconColor: "text-amber-400",   topBar: "from-amber-500/40" },
   { key: "dependencies",  label: "Imports",     icon: GitBranch,    color: "cyan",    border: "border-cyan-500/20",    bg: "bg-cyan-500/[0.07]",    iconColor: "text-cyan-400",    topBar: "from-cyan-500/40" },
-  { key: "resolvedImports",label: "Resolved",   icon: CheckCircle2, color: "emerald", border: "border-emerald-500/20", bg: "bg-emerald-500/[0.07]", iconColor: "text-emerald-400", topBar: "from-emerald-500/40" },
   { key: "functionCalls", label: "Call Graph",  icon: Zap,          color: "rose",    border: "border-rose-500/20",    bg: "bg-rose-500/[0.07]",    iconColor: "text-rose-400",    topBar: "from-rose-500/40" },
 ] as const;
 
@@ -321,85 +320,111 @@ IMPORTANT: Every section must reference actual file names, function names, and l
     }
   };
 
+  // Tabs that require a loaded repo
+  const repoRequiredTabs: NavItem[] = ["File Explorer", "Architecture", "Project Structure", "AI Chat", "Impact Analyzer"];
+  const showSidebar = !!(analysisData || activeTab !== "Dashboard");
+
   return (
-    <main className="grid min-h-screen grid-cols-[240px_1fr] bg-[#0A0A0A] text-slate-300 selection:bg-cyan-500/30">
-      {/* Sidebar */}
-      <aside className="flex flex-col border-r border-white/5 bg-black/20 p-4">
-        <div className="mb-8 flex items-center gap-3 px-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500/30 to-amber-600/20 border border-orange-500/20 shadow-lg shadow-orange-500/10">
-            <Flame size={16} className="text-orange-400" />
-          </div>
-          <div>
-            <span className="text-sm font-bold tracking-wider text-white">PROMETHEUS</span>
-            <p className="text-[10px] text-slate-500 leading-none mt-0.5">Codebase Intelligence</p>
-          </div>
-        </div>
+    <main className={`min-h-screen bg-[#080808] text-slate-300 selection:bg-orange-500/25 ${showSidebar ? "grid grid-cols-[220px_1fr]" : "flex flex-col"}`}>
 
-        <button
-          onClick={() => { setAnalysisData(null); setCodebaseExplanation(null); setActiveTab("Dashboard"); }}
-          className="mb-6 flex w-full items-center justify-center gap-2 rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 py-2 text-sm font-medium text-orange-400 transition-all hover:bg-orange-500/20 hover:border-orange-500/35"
-        >
-          <Flame size={14} /> Import Repository
-        </button>
-
-        <nav className="flex-1 space-y-0.5">
-          {navItems.map(({ label, icon: Icon }) => (
-            <button
-              key={label}
-              onClick={() => setActiveTab(label)}
-              className={`relative flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-all duration-150 ${
-                activeTab === label
-                  ? "bg-white/[0.06] text-white font-medium before:absolute before:left-0 before:top-1/4 before:h-1/2 before:w-0.5 before:rounded-r-full before:bg-orange-400"
-                  : "text-slate-500 hover:bg-white/[0.04] hover:text-slate-300"
-              }`}
-            >
-              <Icon size={15} className={activeTab === label ? "text-orange-400" : "text-slate-600"} />
-              {label}
-            </button>
-          ))}
-        </nav>
-
-        <div className="mt-8 rounded-md border border-white/5 bg-white/[0.02] p-3 text-xs text-slate-500">
-          <div className="flex items-center justify-between mb-1">
-            <span className="font-medium text-slate-300">Command Palette</span>
-            <kbd className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-slate-400">⌘K</kbd>
+      {/* ── Sidebar (only shown after repo loaded) ── */}
+      {showSidebar && (
+        <aside className="flex flex-col border-r border-white/[0.06] bg-black/30 backdrop-blur-sm p-4">
+          {/* Logo */}
+          <div className="mb-7 flex items-center gap-3 px-1">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.06] border border-white/10">
+              <Terminal size={14} className="text-slate-300" />
+            </div>
+            <div>
+              <span className="text-[13px] font-bold tracking-widest text-white font-display" style={{fontFamily: "var(--font-display, inherit)"}}>
+                PROMETHEUS
+              </span>
+              <p className="text-[9px] text-slate-600 leading-none mt-0.5 tracking-widest uppercase">Intelligence</p>
+            </div>
           </div>
-          <p className="leading-relaxed">Search files, functions, navigate, or ask AI about your code.</p>
-        </div>
-      </aside>
+
+          {/* New repo button */}
+          <button
+            onClick={() => { setAnalysisData(null); setCodebaseExplanation(null); setActiveTab("Dashboard"); }}
+            className="mb-5 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-medium text-slate-300 transition-all hover:bg-white/[0.07] hover:text-white"
+          >
+            Import Repository
+          </button>
+
+          {/* Nav items */}
+          <nav className="flex-1 space-y-0.5">
+            {navItems.map(({ label, icon: Icon }) => {
+              const locked = !analysisData && repoRequiredTabs.includes(label);
+              const isActive = activeTab === label;
+              return (
+                <button
+                  key={label}
+                  onClick={() => !locked && setActiveTab(label)}
+                  disabled={locked}
+                  title={locked ? "Import a repository first" : undefined}
+                  className={`relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150 ${
+                    isActive
+                      ? "bg-white/[0.07] text-white font-medium before:absolute before:left-0 before:top-1/4 before:h-1/2 before:w-[3px] before:rounded-r-full before:bg-orange-400"
+                      : locked
+                      ? "text-slate-700 cursor-not-allowed opacity-40"
+                      : "text-slate-500 hover:bg-white/[0.04] hover:text-slate-200"
+                  }`}
+                >
+                  <Icon
+                    size={15}
+                    className={isActive ? "text-orange-400" : locked ? "text-slate-700" : "text-slate-600 group-hover:text-slate-400"}
+                  />
+                  {label}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Command palette hint */}
+          <div className="mt-6 rounded-lg border border-white/[0.05] bg-white/[0.02] p-3 text-xs text-slate-600">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-slate-400 font-medium">Command Palette</span>
+              <kbd className="rounded bg-white/[0.08] px-1.5 py-0.5 text-[10px] text-slate-500 font-mono">⌘K</kbd>
+            </div>
+            <p className="leading-relaxed">Search files, functions, navigate, or ask AI.</p>
+          </div>
+        </aside>
+      )}
 
       {/* Main Content Area */}
-      <section className="flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className="flex items-center justify-between border-b border-white/5 px-8 py-4">
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-500">
-              {repoPathInput
-                ? (repoPathInput.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'Repository')
-                : 'Prometheus'}
-            </span>
-            <span className="text-slate-700">/</span>
-            <span className="text-sm font-medium text-slate-200">{activeTab}</span>
-          </div>
-          <div className="flex items-center gap-4 text-xs text-slate-500">
-            {analysisData ? (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <div className="h-2 w-2 rounded-full bg-emerald-500/80"></div>
-                  Analysis Complete
-                </div>
-                <span className="text-slate-700">|</span>
-                <span>{analysisData.metrics.files} files · {analysisData.metrics.functions} functions</span>
-              </>
-            ) : (
-              <span>No repository loaded</span>
-            )}
-          </div>
-        </header>
+      <section className="flex flex-col overflow-hidden min-h-screen relative">
+        {/* Header — hidden on landing */}
+        {showSidebar && (
+          <header className="flex items-center justify-between border-b border-white/[0.06] px-8 py-3.5">
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-slate-500 font-mono">
+                {repoPathInput
+                  ? (repoPathInput.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'Repository')
+                  : 'Prometheus'}
+              </span>
+              <span className="text-slate-700">/</span>
+              <span className="text-sm font-medium text-slate-200">{activeTab}</span>
+            </div>
+            <div className="flex items-center gap-4 text-xs text-slate-500">
+              {analysisData ? (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-1.5 w-1.5 rounded-full bg-emerald-500"></div>
+                    Analysis Complete
+                  </div>
+                  <span className="text-slate-700">|</span>
+                  <span className="font-mono">{analysisData.metrics.files} files · {analysisData.metrics.functions} functions</span>
+                </>
+              ) : (
+                <span>No repository loaded</span>
+              )}
+            </div>
+          </header>
+        )}
 
         {/* Dynamic Content */}
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="mx-auto max-w-5xl">
+        <div className={`flex-1 overflow-y-auto ${showSidebar ? "p-8" : "p-0"}`}>
+          <div className={showSidebar ? "mx-auto max-w-5xl" : "w-full h-full relative"}>
             <AnimatePresence mode="wait">
             {activeTab === "Dashboard" && (
               <motion.div key="Dashboard" variants={TAB_VARIANTS} initial="initial" animate="animate" exit="exit">
@@ -408,81 +433,128 @@ IMPORTANT: Every section must reference actual file names, function names, and l
                 )}
 
                 {!analysisData ? (
-                  <div className="flex items-center gap-8 min-h-[65vh]">
-                    {/* Left: text + form */}
-                    <div className="w-[400px] flex-shrink-0">
-                      <p className="text-xs font-semibold tracking-[0.2em] uppercase text-cyan-500/70 mb-3">Codebase Intelligence</p>
-                      <h2 className="text-4xl font-bold tracking-tight text-white leading-tight mb-4">
-                        Understand any<br />codebase, instantly.
-                      </h2>
-                      <p className="text-sm text-slate-400 leading-relaxed mb-8">
-                        Point Prometheus at any GitHub repo or local folder. Get instant architecture maps, dependency graphs, and an AI that actually knows your code.
+                  /* ── Full-screen centred hero ── */
+                  <div className="flex min-h-screen w-full items-center justify-center -mt-8 -mx-8 px-6">
+                    {/* Illustration — pinned behind, right side */}
+                    {!isAnalyzing && (
+                      <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-[52%] hidden lg:block">
+                        <PrometheusIllustration className="w-full h-full" />
+                      </div>
+                    )}
+
+                    {/* Card */}
+                    <div className="relative z-10 w-full max-w-[560px]">
+                      {/* Eyebrow */}
+                      <div className="flex items-center gap-2 mb-6">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.06] border border-white/10">
+                          <Terminal size={13} className="text-slate-400" />
+                        </div>
+                        <span className="text-[11px] font-semibold tracking-[0.22em] uppercase text-slate-500">Prometheus</span>
+                      </div>
+
+                      {/* Headline */}
+                      <h1
+                        className="text-[3.2rem] font-bold leading-[1.08] tracking-[-0.03em] text-white mb-5"
+                        style={{ fontFamily: "var(--font-display, inherit)" }}
+                      >
+                        Understand any<br />
+                        <span className="text-orange-400">
+                          codebase,
+                        </span>{" "}
+                        instantly.
+                      </h1>
+
+                      <p className="text-[15px] text-slate-400 leading-relaxed mb-10 max-w-[440px]">
+                        Point Prometheus at any GitHub repo or local path. Get instant architecture maps, dependency graphs, and an AI that actually knows your code.
                       </p>
 
-                      <div className="space-y-3">
-                        <div>
-                          <label className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-1.5 block">Repository URL or Local Path</label>
+                      {/* ── Command bar ── */}
+                      <div className="relative group">
+                        <div className="relative flex items-center rounded-2xl border border-white/[0.08] bg-white/[0.03] transition-colors duration-200 group-focus-within:border-orange-500/40">
+                          {/* Repo icon */}
+                          <div className="pl-5 pr-3 shrink-0 text-slate-600 group-focus-within:text-orange-400 transition-colors">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+                            </svg>
+                          </div>
+
                           <input
                             type="text"
                             value={repoPathInput}
                             onChange={(e) => setRepoPathInput(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
-                            placeholder="https://github.com/user/repo  or  C:\path\to\project"
-                            className="w-full rounded-lg border border-white/10 bg-black/50 px-4 py-3 text-sm text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all"
+                            placeholder="github.com/user/repo  or  /path/to/project"
+                            autoFocus
+                            className="cmd-input flex-1 bg-transparent border-none py-5 pr-4 text-[15px] text-slate-100 placeholder:text-slate-600 focus:outline-none font-mono"
                           />
+
+                          {/* Analyze button */}
+                          <div className="pr-2.5">
+                            <button
+                              onClick={handleAnalyze}
+                              disabled={isAnalyzing || !repoPathInput}
+                              className="flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                            >
+                              {isAnalyzing ? (
+                                <><Loader2 size={15} className="animate-spin" /> Analyzing…</>
+                              ) : (
+                                <><Sparkles size={15} /> Analyze</>
+                              )}
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          onClick={handleAnalyze}
-                          disabled={isAnalyzing || !repoPathInput}
-                          className="flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-500/25 bg-cyan-500/15 px-4 py-3 text-sm font-medium text-cyan-400 transition-all hover:bg-cyan-500/25 hover:border-cyan-500/45 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          {isAnalyzing ? (
-                            <><Loader2 size={16} className="animate-spin" /> Analyzing...</>
-                          ) : (
-                            <><Sparkles size={16} /> Analyze Repository</>
-                          )}
-                        </button>
+
+                        {/* Keyboard hint */}
+                        {!isAnalyzing && (
+                          <p className="mt-2.5 text-right text-[11px] text-slate-600 font-mono">
+                            Press <kbd className="rounded bg-white/[0.07] px-1.5 py-0.5">↵ Enter</kbd> to analyze
+                          </p>
+                        )}
                       </div>
 
-                      {/* Quick-start suggestions */}
-                      <div className="mt-8">
-                        <p className="text-xs text-slate-600 mb-3">Try with a popular repo:</p>
-                        <div className="flex flex-wrap gap-2">
+                      {/* Quick-start repo pills */}
+                      {!isAnalyzing && (
+                        <div className="mt-8 flex items-center gap-3 flex-wrap">
+                          <span className="text-[11px] text-slate-600 shrink-0">Try:</span>
                           {["facebook/react", "vercel/next.js", "tailwindlabs/tailwindcss"].map((repo) => (
                             <button
                               key={repo}
                               onClick={() => setRepoPathInput(`https://github.com/${repo}`)}
-                              className="text-xs px-3 py-1.5 rounded-full border border-white/[0.08] text-slate-500 hover:border-cyan-500/35 hover:text-cyan-400 transition-all"
+                              className="text-[11px] font-mono px-3 py-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] text-slate-500 hover:border-orange-500/40 hover:text-orange-300 hover:bg-orange-500/[0.06] transition-all"
                             >
                               {repo}
                             </button>
                           ))}
                         </div>
-                      </div>
-                    </div>
+                      )}
 
-                    {/* Right: Prometheus illustration — hidden while analyzing */}
-                    {!isAnalyzing && (
-                      <div className="hidden lg:block flex-1 self-stretch min-h-[340px]">
-                        <PrometheusIllustration className="w-full h-full" />
-                      </div>
-                    )}
+                      {/* Loading marquee */}
+                      {isAnalyzing && (
+                        <div className="mt-8 flex items-center gap-3">
+                          <div className="flex items-center gap-1">
+                            {[0,1,2].map(i => (
+                              <div key={i} className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-bounce" style={{animationDelay:`${i*0.15}s`}} />
+                            ))}
+                          </div>
+                          <span className="text-sm text-slate-500">
+                            {["Reading repository…","Mapping files…","Analyzing dependencies…","Building call graph…"][explanationLoadingStep % 4]}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-6 gap-4 mb-12">
+                    <div className="grid grid-cols-5 gap-4 mb-12">
                       {METRIC_CARDS.map(({ key, label, icon: Icon, border, bg, iconColor, topBar }) => {
                         const raw = key === "functionCalls"
                           ? (analysisData.metrics.functionCalls || 0)
                           : (analysisData.metrics as any)[key] ?? 0;
-                        const display = key === "resolvedImports"
-                          ? `${Math.round((raw / Math.max(analysisData.metrics.dependencies, 1)) * 100)}%`
-                          : raw;
                         return (
                           <div key={key} className={`relative overflow-hidden flex flex-col rounded-xl border ${border} ${bg} p-5 hover:-translate-y-0.5 transition-transform duration-150`}>
                             <div className={`absolute top-0 right-0 h-px w-2/3 bg-gradient-to-l ${topBar} to-transparent`} />
                             <Icon size={16} className={`${iconColor} mb-3 opacity-80`} />
-                            <span className="tabular-nums text-3xl font-semibold text-white leading-none">{display}</span>
+                            <span className="tabular-nums text-3xl font-semibold text-white leading-none">{raw}</span>
                             <span className="text-xs text-slate-500 mt-1.5 uppercase tracking-wider">{label}</span>
                           </div>
                         );
@@ -672,8 +744,8 @@ IMPORTANT: Every section must reference actual file names, function names, and l
 
                   {isChatLoading && (
                     <div className="flex gap-4">
-                      <div className="h-8 w-8 rounded bg-orange-500/20 text-orange-400 flex items-center justify-center shrink-0 flex-shrink-0">
-                        <Flame size={14} className="text-orange-400" />
+                      <div className="h-8 w-8 rounded bg-white/[0.06] border border-white/[0.08] flex items-center justify-center shrink-0 flex-shrink-0">
+                        <Sparkles size={14} className="text-slate-400" />
                       </div>
                       <div className="flex items-center gap-1 mt-3">
                         {[0, 1, 2].map((i) => (
