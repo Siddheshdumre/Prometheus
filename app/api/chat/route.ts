@@ -23,11 +23,8 @@ interface ChatRequestBody {
     message?: string;
     context?: AnalysisContext;
     stream?: boolean;
+    apiKey?: string;
 }
-
-// Initialize the Google Gen AI client. 
-// It will automatically use the GEMINI_API_KEY environment variable.
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 function buildPrompt(message: string, context: AnalysisContext, relevantContext: string): string {
     return `
@@ -76,7 +73,7 @@ function buildRelevantContext(context: AnalysisContext, message: string): string
 
 export async function POST(req: Request) {
     try {
-        const { message, context, stream: useStreaming } = (await req.json()) as ChatRequestBody;
+        const { message, context, stream: useStreaming, apiKey } = (await req.json()) as ChatRequestBody;
 
         if (!message) {
             return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -85,6 +82,12 @@ export async function POST(req: Request) {
         if (!context) {
             return NextResponse.json({ error: "Analysis context is required" }, { status: 400 });
         }
+
+        const resolvedKey = apiKey?.trim() || process.env.GEMINI_API_KEY || '';
+        if (!resolvedKey) {
+            return NextResponse.json({ error: "No Gemini API key configured. Add one in Settings." }, { status: 400 });
+        }
+        const ai = new GoogleGenAI({ apiKey: resolvedKey });
 
         const relevantContext = buildRelevantContext(context, message);
         const prompt = buildPrompt(message, context, relevantContext);

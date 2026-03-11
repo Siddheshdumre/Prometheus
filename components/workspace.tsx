@@ -73,6 +73,27 @@ export function Workspace() {
   const [explanationLoadingStep, setExplanationLoadingStep] = useState(0);
   const [copiedExplanation, setCopiedExplanation] = useState(false);
 
+  // Settings State
+  const [apiKey, setApiKey] = useState<string>("");
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [apiKeySaved, setApiKeySaved] = useState(false);
+  const [maxFiles, setMaxFiles] = useState<number>(500);
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    const savedKey = localStorage.getItem("prometheus_api_key") || "";
+    const savedMax = parseInt(localStorage.getItem("prometheus_max_files") || "500", 10);
+    setApiKey(savedKey);
+    setMaxFiles(isNaN(savedMax) ? 500 : savedMax);
+  }, []);
+
+  const saveSettings = () => {
+    localStorage.setItem("prometheus_api_key", apiKey);
+    localStorage.setItem("prometheus_max_files", String(maxFiles));
+    setApiKeySaved(true);
+    setTimeout(() => setApiKeySaved(false), 2000);
+  };
+
   useEffect(() => {
     if (!isExplanationLoading) return;
     const interval = setInterval(() => setExplanationLoadingStep(s => s + 1), 2500);
@@ -177,7 +198,7 @@ IMPORTANT: Every section must reference actual file names, function names, and l
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, context: data, stream: true }),
+        body: JSON.stringify({ message, context: data, stream: true, apiKey }),
       });
 
       if (!res.ok) {
@@ -239,7 +260,8 @@ IMPORTANT: Every section must reference actual file names, function names, and l
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: query,
-          context: analysisData
+          context: analysisData,
+          apiKey,
         })
       })
       .then(res => res.json())
@@ -304,7 +326,8 @@ IMPORTANT: Every section must reference actual file names, function names, and l
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userMessage,
-          context: analysisData // Send full analysis data including codeChunks
+          context: analysisData,
+          apiKey,
         })
       });
       const data = await res.json();
@@ -791,9 +814,124 @@ IMPORTANT: Every section must reference actual file names, function names, and l
 
             {activeTab === "Settings" && (
               <motion.div key="Settings" variants={TAB_VARIANTS} initial="initial" animate="animate" exit="exit">
-                <h1 className="text-2xl font-light tracking-tight text-white mb-6">Settings</h1>
-                <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6 text-sm text-slate-400">
-                  Configuration options will appear here.
+                <h1 className="text-2xl font-light tracking-tight text-white mb-2">Settings</h1>
+                <p className="text-sm text-slate-500 mb-8">Configure Prometheus. Settings are saved locally in your browser.</p>
+
+                <div className="space-y-6 max-w-2xl">
+
+                  {/* AI Configuration */}
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
+                    <h2 className="text-base font-medium text-white mb-1">AI Configuration</h2>
+                    <p className="text-xs text-slate-500 mb-5">Provide your own Gemini API key. If left blank, the server environment key is used (if configured).</p>
+                    <div className="space-y-3">
+                      <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider">Gemini API Key</label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            type={apiKeyVisible ? "text" : "password"}
+                            value={apiKey}
+                            onChange={e => setApiKey(e.target.value)}
+                            placeholder="AIza…"
+                            spellCheck={false}
+                            className="w-full bg-white/[0.04] border border-white/10 rounded-lg py-2.5 pl-3 pr-10 text-sm text-slate-200 placeholder:text-slate-700 font-mono focus:outline-none focus:border-orange-500/40 transition-colors"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setApiKeyVisible(v => !v)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-300 transition-colors text-xs"
+                          >
+                            {apiKeyVisible ? "hide" : "show"}
+                          </button>
+                        </div>
+                      </div>
+                      {apiKey && (
+                        <p className="text-xs text-emerald-500/80">✓ Key set — will be used for all AI requests from this browser.</p>
+                      )}
+                      {!apiKey && (
+                        <p className="text-xs text-slate-600">No key set. Falling back to server environment variable.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Analysis Settings */}
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
+                    <h2 className="text-base font-medium text-white mb-1">Analysis Settings</h2>
+                    <p className="text-xs text-slate-500 mb-5">Controls how deeply Prometheus scans a repository.</p>
+                    <div className="space-y-5">
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Max files to analyse</label>
+                          <span className="text-sm font-mono text-orange-400">{maxFiles === 0 ? "unlimited" : maxFiles}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={50}
+                          max={2000}
+                          step={50}
+                          value={maxFiles}
+                          onChange={e => setMaxFiles(Number(e.target.value))}
+                          className="w-full accent-orange-500 cursor-pointer"
+                        />
+                        <div className="flex justify-between text-[10px] text-slate-700 mt-1 font-mono">
+                          <span>50</span><span>500</span><span>1000</span><span>2000</span>
+                        </div>
+                        <p className="text-xs text-slate-600 mt-2">Higher values give more complete analysis but take longer. Recommended: 500 for most repos.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Keyboard Shortcuts */}
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
+                    <h2 className="text-base font-medium text-white mb-4">Keyboard Shortcuts</h2>
+                    <div className="space-y-2">
+                      {[
+                        { keys: ["⌘", "K"],      desc: "Open Command Palette" },
+                        { keys: ["↵"],             desc: "Run analysis (from landing input)" },
+                        { keys: ["Esc"],           desc: "Close Command Palette" },
+                        { keys: ["↑", "↓"],       desc: "Navigate Command Palette results" },
+                      ].map(({ keys, desc }) => (
+                        <div key={desc} className="flex items-center justify-between py-1.5 border-b border-white/[0.03] last:border-0">
+                          <span className="text-sm text-slate-400">{desc}</span>
+                          <div className="flex items-center gap-1">
+                            {keys.map(k => (
+                              <kbd key={k} className="rounded bg-white/[0.08] border border-white/10 px-2 py-0.5 text-[11px] text-slate-400 font-mono">{k}</kbd>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* About */}
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
+                    <h2 className="text-base font-medium text-white mb-4">About</h2>
+                    <div className="space-y-2 text-sm">
+                      {[
+                        ["Version",    "0.1.0"],
+                        ["Framework",  "Next.js 14 · App Router"],
+                        ["AI Model",   "Gemini 2.5 Flash"],
+                        ["Parser",     "ts-morph (TypeScript/JS · multi-lang fallback)"],
+                        ["Graph",      "@xyflow/react"],
+                        ["Developer:",    "Siddhesh D"],
+                      ].map(([label, value]) => (
+                        <div key={label} className="flex items-baseline gap-3">
+                          <span className="text-slate-600 w-24 shrink-0 text-xs uppercase tracking-wider">{label}</span>
+                          <span className="text-slate-300 font-mono text-xs">{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Save button */}
+                  <div className="flex justify-end">
+                    <button
+                      onClick={saveSettings}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium transition-colors active:scale-95"
+                    >
+                      {apiKeySaved ? <><Check size={14} /> Saved</> : "Save Settings"}
+                    </button>
+                  </div>
+
                 </div>
               </motion.div>
             )}            </AnimatePresence>
